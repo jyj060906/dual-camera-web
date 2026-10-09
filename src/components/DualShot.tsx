@@ -31,7 +31,7 @@ const FILTERS = [
   { id: "warm", label: "따뜻한", effect: "sepia(0.35) saturate(1.2)" },
   { id: "cool", label: "차가운", effect: "sepia(0.25) hue-rotate(170deg) saturate(1.1)" },
   { id: "vintage", label: "빈티지", effect: "sepia(0.5) contrast(0.9) brightness(1.05)" },
-  { id: "yellow", label: "노랑", effect: "sepia(0.8) saturate(2.5) hue-rotate(15deg) brightness(1.05)" },
+  { id: "yellow", label: "노랑", effect: "sepia(0.4) hue-rotate(12deg) saturate(1.1) contrast(0.88) brightness(1.08)" },
 ] as const;
 
 type FilterId = (typeof FILTERS)[number]["id"];
