@@ -24,8 +24,22 @@ const STAR_CLIP =
 type Adjust = { brightness: number; contrast: number; saturate: number };
 const NO_ADJUST: Adjust = { brightness: 100, contrast: 100, saturate: 100 };
 
-const filterOf = (a: Adjust) =>
-  `brightness(${a.brightness}%) contrast(${a.contrast}%) saturate(${a.saturate}%)`;
+// 필터를 늘리려면 이 목록에 한 줄만 추가하면 된다. effect는 CSS filter 값이다.
+const FILTERS = [
+  { id: "none", label: "원본", effect: "" },
+  { id: "bw", label: "흑백", effect: "grayscale(1)" },
+  { id: "warm", label: "따뜻한", effect: "sepia(0.35) saturate(1.2)" },
+  { id: "cool", label: "차가운", effect: "sepia(0.25) hue-rotate(170deg) saturate(1.1)" },
+  { id: "vintage", label: "빈티지", effect: "sepia(0.5) contrast(0.9) brightness(1.05)" },
+  { id: "yellow", label: "노랑", effect: "sepia(0.8) saturate(2.5) hue-rotate(15deg) brightness(1.05)" },
+] as const;
+
+type FilterId = (typeof FILTERS)[number]["id"];
+
+const filterOf = (a: Adjust, f: FilterId) =>
+  `brightness(${a.brightness}%) contrast(${a.contrast}%) saturate(${a.saturate}%) ${
+    FILTERS.find((x) => x.id === f)!.effect
+  }`;
 
 function shapeStyle(frame: Frame): React.CSSProperties {
   switch (frame) {
@@ -55,6 +69,10 @@ export default function DualShot() {
   const [adjust, setAdjust] = useState<Record<Slot, Adjust>>({
     big: NO_ADJUST,
     small: NO_ADJUST,
+  });
+  const [filters, setFilters] = useState<Record<Slot, FilterId>>({
+    big: "none",
+    small: "none",
   });
   const [editSlot, setEditSlot] = useState<Slot>("big");
   const [smallSize, setSmallSize] = useState(32); // 큰 사진 너비 대비 %
@@ -125,12 +143,14 @@ export default function DualShot() {
   function retake(s: Slot) {
     setPhotos((p) => ({ ...p, [s]: null }));
     setAdjust((a) => ({ ...a, [s]: NO_ADJUST }));
+    setFilters((f) => ({ ...f, [s]: "none" }));
     setSlot(s);
   }
 
   function swap() {
     setPhotos((p) => ({ big: p.small, small: p.big }));
     setAdjust((a) => ({ big: a.small, small: a.big }));
+    setFilters((f) => ({ big: f.small, small: f.big }));
   }
 
   function startDrag(e: React.PointerEvent<HTMLDivElement>) {
@@ -225,7 +245,7 @@ export default function DualShot() {
               src={photos.big!}
               alt="큰 사진"
               className="h-full w-full object-cover"
-              style={{ filter: filterOf(adjust.big) }}
+              style={{ filter: filterOf(adjust.big, filters.big) }}
             />
             <div
               onPointerDown={startDrag}
@@ -247,7 +267,7 @@ export default function DualShot() {
                   alt="작은 사진"
                   draggable={false}
                   className="h-full w-full object-cover"
-                  style={{ filter: filterOf(adjust.small) }}
+                  style={{ filter: filterOf(adjust.small, filters.small) }}
                 />
               </div>
             </div>
@@ -292,6 +312,21 @@ export default function DualShot() {
                 </button>
               ))}
             </div>
+            <div className="flex flex-wrap gap-2">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setFilters((p) => ({ ...p, [editSlot]: f.id }))}
+                  className={`rounded-full border px-3 py-1 ${
+                    filters[editSlot] === f.id
+                      ? "border-pink-500 bg-pink-50 text-pink-600"
+                      : ""
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
             {(
               [
                 ["brightness", "밝기"],
@@ -317,7 +352,10 @@ export default function DualShot() {
               </label>
             ))}
             <button
-              onClick={() => setAdjust((a) => ({ ...a, [editSlot]: NO_ADJUST }))}
+              onClick={() => {
+                setAdjust((a) => ({ ...a, [editSlot]: NO_ADJUST }));
+                setFilters((f) => ({ ...f, [editSlot]: "none" }));
+              }}
               className="self-end text-zinc-500 underline"
             >
               초기화
