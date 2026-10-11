@@ -49,3 +49,13 @@ export const SaveIcon = ({ className }: IconProps) => (
     <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14" />
   </Svg>
 );
+
+// 친구(사람 둘)
+export const UsersIcon = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <circle cx="9" cy="8" r="3.5" />
+    <path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5" />
+    <circle cx="17" cy="9" r="2.5" />
+    <path d="M17.5 14.2c2.2.2 3.6 1.8 4 4.3" />
+  </Svg>
+);
