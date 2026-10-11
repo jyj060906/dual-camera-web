@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { TEXTURES, TextureLayers, type TextureId } from "./textures";
 
 type Slot = "big" | "small";
 
@@ -84,6 +85,10 @@ export default function DualShot() {
     big: "none",
     small: "none",
   });
+  const [textures, setTextures] = useState<Record<Slot, TextureId[]>>({
+    big: [],
+    small: [],
+  });
   const [editSlot, setEditSlot] = useState<Slot>("big");
   const [smallSize, setSmallSize] = useState(32); // 큰 사진 너비 대비 %
   const [smallPos, setSmallPos] = useState({ x: 6, y: 6 }); // 왼쪽·위 기준 %
@@ -154,6 +159,7 @@ export default function DualShot() {
     setPhotos((p) => ({ ...p, [s]: null }));
     setAdjust((a) => ({ ...a, [s]: NO_ADJUST }));
     setFilters((f) => ({ ...f, [s]: "none" }));
+    setTextures((t) => ({ ...t, [s]: [] }));
     setSlot(s);
   }
 
@@ -161,6 +167,16 @@ export default function DualShot() {
     setPhotos((p) => ({ big: p.small, small: p.big }));
     setAdjust((a) => ({ big: a.small, small: a.big }));
     setFilters((f) => ({ big: f.small, small: f.big }));
+    setTextures((t) => ({ big: t.small, small: t.big }));
+  }
+
+  function toggleTexture(id: TextureId) {
+    setTextures((t) => ({
+      ...t,
+      [editSlot]: t[editSlot].includes(id)
+        ? t[editSlot].filter((x) => x !== id)
+        : [...t[editSlot], id],
+    }));
   }
 
   function startDrag(e: React.PointerEvent<HTMLDivElement>) {
@@ -250,13 +266,16 @@ export default function DualShot() {
             ref={stageRef}
             className="relative aspect-[3/4] touch-none overflow-hidden rounded-2xl bg-zinc-200"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photos.big!}
-              alt="큰 사진"
-              className="h-full w-full object-cover"
-              style={{ filter: filterOf(adjust.big, filters.big) }}
-            />
+            <div className="absolute inset-0 overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photos.big!}
+                alt="큰 사진"
+                className="h-full w-full object-cover"
+                style={{ filter: filterOf(adjust.big, filters.big) }}
+              />
+              <TextureLayers active={textures.big} />
+            </div>
             <div
               onPointerDown={startDrag}
               className="absolute cursor-grab drop-shadow-lg"
@@ -271,14 +290,17 @@ export default function DualShot() {
                 className="h-full w-full overflow-hidden"
                 style={shapeStyle(frame)}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photos.small!}
-                  alt="작은 사진"
-                  draggable={false}
-                  className="h-full w-full object-cover"
-                  style={{ filter: filterOf(adjust.small, filters.small) }}
-                />
+                <div className="relative h-full w-full overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photos.small!}
+                    alt="작은 사진"
+                    draggable={false}
+                    className="h-full w-full object-cover"
+                    style={{ filter: filterOf(adjust.small, filters.small) }}
+                  />
+                  <TextureLayers active={textures.small} />
+                </div>
               </div>
             </div>
           </div>
@@ -322,18 +344,33 @@ export default function DualShot() {
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
               {FILTERS.map((f) => (
                 <button
                   key={f.id}
                   onClick={() => setFilters((p) => ({ ...p, [editSlot]: f.id }))}
-                  className={`rounded-full border px-3 py-1 ${
+                  className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${
                     filters[editSlot] === f.id
                       ? "border-pink-500 bg-pink-50 text-pink-600"
                       : ""
                   }`}
                 >
                   {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
+              {TEXTURES.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => toggleTexture(t.id)}
+                  className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${
+                    textures[editSlot].includes(t.id)
+                      ? "border-pink-500 bg-pink-50 text-pink-600"
+                      : ""
+                  }`}
+                >
+                  {t.label}
                 </button>
               ))}
             </div>
@@ -365,6 +402,7 @@ export default function DualShot() {
               onClick={() => {
                 setAdjust((a) => ({ ...a, [editSlot]: NO_ADJUST }));
                 setFilters((f) => ({ ...f, [editSlot]: "none" }));
+                setTextures((t) => ({ ...t, [editSlot]: [] }));
               }}
               className="self-end text-zinc-500 underline"
             >
