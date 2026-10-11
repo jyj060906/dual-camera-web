@@ -1,5 +1,5 @@
 // Supabase 설정 점검: node scripts/check-supabase.mjs
-// .env.local의 주소·anon 키로 접속해서 가입 설정, 구글·카카오, 스키마 적용 여부를 확인한다.
+// .env.local의 주소·anon 키로 접속해서 가입 설정, 구글, 스키마 적용 여부를 확인한다.
 // 키는 화면에 출력하지 않는다(결과만 공유해도 안전하다).
 import fs from "fs";
 
@@ -63,7 +63,6 @@ const pw = s.password_min_length;
 if (typeof pw === "number") check(pw >= 8, `비밀번호 최소 길이 ${pw}자`, `비밀번호 최소 길이가 ${pw}자예요`, "앱은 8자 이상을 요구합니다. 설정에서 8 이상으로 올리면 일관돼요.");
 
 check(s.external?.google === true, "구글 로그인이 켜져 있다", "구글 로그인이 꺼져 있어요", "Authentication → Providers → Google을 켜고 클라이언트 ID/Secret을 넣으세요.");
-check(s.external?.kakao === true, "카카오 로그인이 켜져 있다", "카카오 로그인이 꺼져 있어요", "Authentication → Providers → Kakao를 켜고 REST API 키/Client Secret을 넣으세요.");
 
 // schema.sql을 실행했는지
 const rpc = await get("/rest/v1/rpc/username_available", {

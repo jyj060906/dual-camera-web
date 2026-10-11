@@ -89,7 +89,7 @@ export default function LoginForm() {
     }
   }
 
-  async function oauth(provider: "google" | "kakao") {
+  async function oauth(provider: "google") {
     setError(null);
     const { error: oauthError } = await getSupabase().auth.signInWithOAuth({
       provider,
@@ -185,14 +185,8 @@ export default function LoginForm() {
         <button onClick={() => oauth("google")} className="rounded-full border py-3">
           Google로 계속하기
         </button>
-        <button
-          onClick={() => oauth("kakao")}
-          className="rounded-full bg-[#FEE500] py-3 font-medium text-black"
-        >
-          카카오로 계속하기
-        </button>
         <p className="text-xs text-zinc-500">
-          구글·카카오로 들어오면 아이디/비밀번호 계정과는 별개의 계정이에요.
+          구글로 들어오면 아이디/비밀번호 계정과는 별개의 계정이에요.
         </p>
       </div>
     </div>

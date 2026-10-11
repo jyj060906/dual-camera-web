@@ -6,7 +6,7 @@ import { SUPABASE_CONFIGURED, getSupabase } from "./supabase";
 
 export type Profile = {
   id: string;
-  username: string | null; // 구글·카카오로 처음 들어온 사람은 아이디를 정할 때까지 비어 있다
+  username: string | null; // 구글로 처음 들어온 사람은 아이디를 정할 때까지 비어 있다
   nickname: string;
   bio: string;
   avatar_url: string | null;

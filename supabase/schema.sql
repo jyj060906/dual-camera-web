@@ -8,7 +8,7 @@
 -- ───────────────────────── 프로필 ─────────────────────────
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  username text,                                  -- 아이디. 구글·카카오로 처음 들어온 사람은 정할 때까지 비어 있다.
+  username text,                                  -- 아이디. 구글로 처음 들어온 사람은 정할 때까지 비어 있다.
   nickname text not null default '',
   bio text not null default '',
   avatar_url text,
@@ -68,7 +68,7 @@ begin
 end $$;
 
 -- 가입하면 프로필을 만든다. 아이디/비밀번호 가입은 이메일에서 아이디를 꺼내 쓰고(클라이언트가 보낸 값은 믿지 않는다),
--- 구글·카카오는 아이디를 비워 둔다.
+-- 구글은 아이디를 비워 둔다.
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
