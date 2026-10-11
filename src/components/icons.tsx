@@ -49,12 +49,3 @@ export const SaveIcon = ({ className }: IconProps) => (
     <path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14" />
   </Svg>
 );
-
-// 얼굴
-export const FaceIcon = ({ className }: IconProps) => (
-  <Svg className={className}>
-    <circle cx="12" cy="12" r="9" />
-    <path d="M9 10v.01M15 10v.01" />
-    <path d="M8.5 14.5c1 1.4 2.2 2 3.5 2s2.5-.6 3.5-2" />
-  </Svg>
-);
