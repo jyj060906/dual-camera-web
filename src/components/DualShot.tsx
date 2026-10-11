@@ -14,8 +14,11 @@ import {
 import {
   FILTERS,
   FONTS,
+  DEFAULT_TAPE,
   FRAMES,
   NO_ADJUST,
+  TAPE_ALPHA,
+  hexToRgba,
   STAR_CLIP,
   filterOf,
   fontCss,
@@ -24,6 +27,7 @@ import {
   type FilterId,
   type Frame,
   type Slot,
+  type Tape,
   type TextItem,
 } from "@/lib/editor";
 
@@ -94,6 +98,7 @@ export default function DualShot() {
   const [slot, setSlot] = useState<Slot>("big");
   const [error, setError] = useState<string | null>(null);
   const [frame, setFrame] = useState<Frame>("rounded");
+  const [tape, setTape] = useState<Tape>(DEFAULT_TAPE);
   const [adjust, setAdjust] = useState<Record<Slot, Adjust>>({
     big: NO_ADJUST,
     small: NO_ADJUST,
@@ -239,6 +244,7 @@ export default function DualShot() {
         filters,
         textures,
         frame,
+        tape,
         smallSize,
         smallPos,
         texts,
@@ -462,6 +468,18 @@ export default function DualShot() {
                       <TextureLayers active={textures.small} />
                     </div>
                   </div>
+                  {tape.on && (
+                    <div
+                      aria-hidden
+                      className="absolute left-1/2 top-0"
+                      style={{
+                        width: `${(smallSize * tape.length) / 100}cqw`,
+                        height: `${tape.thickness}cqw`,
+                        transform: "translate(-50%, -50%)",
+                        background: hexToRgba(tape.color, TAPE_ALPHA),
+                      }}
+                    />
+                  )}
                 </div>
                 {texts.map((t) => {
                   const style: React.CSSProperties = {
@@ -583,6 +601,53 @@ export default function DualShot() {
                   {f.label}
                 </button>
               ))}
+            </div>
+
+            <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
+              <button
+                onClick={() => setTape((t) => ({ ...t, on: !t.on }))}
+                aria-pressed={tape.on}
+                className={`rounded-lg border py-1 ${
+                  tape.on ? "border-pink-500 bg-pink-50 text-pink-600" : ""
+                }`}
+              >
+                띠지 {tape.on ? "빼기" : "붙이기"}
+              </button>
+              {tape.on && (
+                <>
+                  {(
+                    [
+                      ["length", "길이", 20, 200],
+                      ["thickness", "두께", 2, 20],
+                    ] as [keyof Tape, string, number, number][]
+                  ).map(([key, label, min, max]) => (
+                    <label key={key} className="flex items-center gap-3">
+                      <span className="w-10">{label}</span>
+                      <input
+                        type="range"
+                        min={min}
+                        max={max}
+                        value={tape[key] as number}
+                        onChange={(e) =>
+                          setTape((t) => ({ ...t, [key]: Number(e.target.value) }))
+                        }
+                        className="flex-1"
+                      />
+                    </label>
+                  ))}
+                  <label className="flex items-center gap-3">
+                    <span className="w-10">색</span>
+                    <input
+                      type="color"
+                      value={tape.color}
+                      onChange={(e) =>
+                        setTape((t) => ({ ...t, color: e.target.value }))
+                      }
+                      className="h-6 w-10 cursor-pointer border-0 bg-transparent p-0"
+                    />
+                  </label>
+                </>
+              )}
             </div>
 
             <div className="flex gap-2 text-sm">

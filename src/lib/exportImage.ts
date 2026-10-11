@@ -4,8 +4,10 @@ import {
   FONT_FALLBACK_VAR,
   FONTS,
   FRAMES,
+  TAPE_ALPHA,
   filterOf,
   hexToRgba,
+  type Tape,
   type Adjust,
   type FilterId,
   type Frame,
@@ -23,6 +25,7 @@ export type ExportInput = {
   filters: Record<Slot, FilterId>;
   textures: Record<Slot, TextureId[]>;
   frame: Frame;
+  tape: Tape;
   smallSize: number; // 큰 사진 너비 대비 %
   smallPos: { x: number; y: number }; // %
   texts: TextItem[];
@@ -324,6 +327,19 @@ export async function renderDualShot(input: ExportInput): Promise<HTMLCanvasElem
   drawPhoto(ctx, smallImg, inner, filterOf(input.adjust.small, input.filters.small), k);
   drawTextures(ctx, input.textures.small, inner, k);
   ctx.restore();
+
+  // 띠지: 작은 사진 위쪽 가장자리의 가운데에 걸친다.
+  if (input.tape.on) {
+    const tw = (input.tape.length / 100) * box.w;
+    const th = (input.tape.thickness / 100) * W;
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.15)";
+    ctx.shadowBlur = 8 * k;
+    ctx.shadowOffsetY = 4 * k;
+    ctx.fillStyle = hexToRgba(input.tape.color, TAPE_ALPHA);
+    ctx.fillRect(box.x + box.w / 2 - tw / 2, box.y - th / 2, tw, th);
+    ctx.restore();
+  }
 
   // 텍스트
   for (const t of input.texts) {

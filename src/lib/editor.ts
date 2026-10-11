@@ -42,6 +42,17 @@ export const textShadowCss = (t: TextItem) =>
     ? `0 ${t.shadowOffset}px ${t.shadowBlur}px ${hexToRgba(t.shadowColor, t.shadowAlpha / 100)}`
     : "none";
 
+// 띠지: 작은 사진 위쪽 가장자리에 걸쳐 붙이는 장식. 모든 프레임 위에 겹쳐 쓴다.
+export type Tape = {
+  on: boolean;
+  length: number; // 작은 사진 너비 대비 %
+  thickness: number; // 사진 틀 너비 대비 %
+  color: string;
+};
+
+export const TAPE_ALPHA = 0.8;
+export const DEFAULT_TAPE: Tape = { on: false, length: 70, thickness: 7, color: "#f9a8d4" };
+
 export type Adjust = { brightness: number; contrast: number; saturate: number };
 export const NO_ADJUST: Adjust = { brightness: 100, contrast: 100, saturate: 100 };
 
