@@ -152,6 +152,31 @@ ok("누구나 사진 조회(공개 버킷)", (await as(null, "select * from stor
 ok("남이 내 사진을 지울 수 없음", (await as(bob, "delete from storage.objects where bucket_id='avatars'")).count === 0);
 ok("내 사진은 내가 지울 수 있음", (await as(alice, "delete from storage.objects where bucket_id='avatars'")).count === 1);
 
+// ── 게시물(내 피드) ──
+const post = (uid, vis = "private", cap = "", path) => as(uid, "insert into posts (author, image_path, caption, visibility) values ($1,$2,$3,$4) returning id", [uid, path ?? `${uid}/${Math.random()}.jpg`, cap, vis]);
+const p1 = (await post(alice, "public", "첫 글")).rows[0].id;
+const p2 = (await post(alice, "friends")).rows[0].id;
+const p3 = (await post(alice, "private")).rows[0].id;
+ok("내 게시물 올리기, 새 게시물이 맨 앞", (await as(alice, "select id from posts order by sort_order, created_at desc")).rows.map((x) => x.id).join() === [p3, p2, p1].join());
+ok("공개 범위를 안 정하면 거부", !!(await post(alice, "everyone")).error);
+ok("남의 폴더 경로로는 올릴 수 없음", !!(await post(alice, "public", "", `${bob}/x.jpg`)).error);
+ok("남의 이름으로 올릴 수 없음", !!(await as(alice, "insert into posts (author, image_path, visibility) values ($1,$2,'public')", [bob, `${bob}/x.jpg`])).error);
+ok("본문 500자 초과 거부", !!(await post(alice, "public", "가".repeat(501))).error);
+ok("남의 게시물은 (공개여도) 읽을 수 없음 — 규칙 미정이라 열지 않음", (await as(bob, "select * from posts")).rows.length === 0 && (await as(null, "select * from posts")).rows.length === 0);
+ok("순서 바꾸기", (await as(alice, "select reorder_my_posts($1::uuid[])", [[p1, p3, p2]])).error === undefined && (await as(alice, "select id from posts order by sort_order, created_at desc")).rows.map((x) => x.id).join() === [p1, p3, p2].join());
+ok("일부만 담으면 거부", !!(await as(alice, "select reorder_my_posts($1::uuid[])", [[p1, p2]])).error);
+ok("중복이 있으면 거부", !!(await as(alice, "select reorder_my_posts($1::uuid[])", [[p1, p1, p2]])).error);
+const bp = (await post(bob, "public")).rows[0].id;
+ok("남의 게시물 id를 섞으면 거부", !!(await as(alice, "select reorder_my_posts($1::uuid[])", [[p1, p3, bp]])).error);
+ok("남의 게시물 순서는 건드릴 수 없음", (await as(alice, "update posts set sort_order=99 where id=$1", [bp])).count === 0);
+ok("순서 외 항목(본문)은 수정 불가", (await as(alice, "update posts set caption='x' where id=$1", [p1])).error !== undefined);
+ok("공개 범위도 수정 불가", (await as(alice, "update posts set visibility='public' where id=$1", [p2])).error !== undefined);
+ok("게시물 삭제 불가(정책 없음)", (await as(alice, "delete from posts")).count === 0);
+ok("posts 버킷은 비공개", (await admin.query("select public from storage.buckets where id='posts'")).rows[0].public === false);
+ok("내 폴더에 게시물 이미지 업로드", (await as(alice, "insert into storage.objects (bucket_id, name) values ('posts', $1)", [`${alice}/a.jpg`])).count === 1);
+ok("남의 폴더에는 업로드 불가", !!(await as(alice, "insert into storage.objects (bucket_id, name) values ('posts', $1)", [`${bob}/a.jpg`])).error);
+ok("내 게시물 이미지만 읽을 수 있음", (await as(alice, "select * from storage.objects where bucket_id='posts'")).rows.length === 1 && (await as(bob, "select * from storage.objects where bucket_id='posts'")).rows.length === 0 && (await as(null, "select * from storage.objects where bucket_id='posts'")).rows.length === 0);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await admin.end();
 await server.stop();
