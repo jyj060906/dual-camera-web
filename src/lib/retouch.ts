@@ -1,6 +1,7 @@
 // 터치 보정 엔진. 사진 픽셀을 canvas 위에서 직접 고친다(얼굴 인식 없이 브러시로 칠하는 방식).
 
-export type Tool = "smooth" | "heal" | "brighten" | "color" | "enlarge" | "shrink";
+// resize(크기 조절)는 브러시로 칠하지 않고, 위치를 찍은 뒤 슬라이더로 양을 정한다.
+export type Tool = "smooth" | "heal" | "brighten" | "color" | "resize";
 
 // 보정 중인 사진 한 장. canvas가 곧 화면에 보이는 사진이다.
 export type Work = { canvas: HTMLCanvasElement; undo: ImageData[] };
@@ -25,6 +26,8 @@ export async function createWork(src: string): Promise<Work> {
   canvas.width = Math.round(img.naturalWidth * scale);
   canvas.height = Math.round(img.naturalHeight * scale);
   getCtx(canvas).drawImage(img, 0, 0, canvas.width, canvas.height);
+  // 화면 틀 안에 사진 전체가 보이도록 맞춘다.
+  canvas.style.cssText = "width:100%;height:100%;object-fit:contain;display:block;";
   return { canvas, undo: [] };
 }
 
@@ -94,7 +97,7 @@ function hexToRgb(hex: string): [number, number, number] {
 
 /**
  * 한 번 찍는 보정. (cx, cy)는 사진 픽셀 좌표, rad는 브러시 반지름(px), strength는 0~1.
- * amount는 한 번에 적용하는 양의 배수로, 누르고 있는 동안 조금씩 쌓이게 하는 데 쓴다.
+ * amount는 한 번에 적용하는 양의 배수다(콕 눌렀을 때는 드래그 한 번보다 조금 더 세게 준다).
  */
 export function stamp(
   canvas: HTMLCanvasElement,
@@ -114,9 +117,8 @@ export function stamp(
     case "brighten":
     case "color":
       return tintStamp(canvas, tool, cx, cy, rad, strength, color, amount);
-    case "enlarge":
-    case "shrink":
-      return warpStamp(canvas, tool === "enlarge" ? 1 : -1, cx, cy, rad, strength, amount);
+    case "resize":
+      return; // 크기 조절은 previewResize로 따로 처리한다.
   }
 }
 
@@ -225,12 +227,12 @@ function tintStamp(
       if (m <= 0) continue;
       const i = (y * reg.w + x) * 4;
       if (tool === "brighten") {
-        const a = Math.min(1, m * strength * 0.012 * amount);
+        const a = Math.min(1, m * strength * 0.06 * amount);
         for (let c = 0; c < 3; c++) d[i + c] += (255 - d[i + c]) * a;
       } else {
         // 원래 밝기(음영)는 그대로 두고 색만 입혀서 피부 질감이 남게 한다.
         const k = lum(d[i], d[i + 1], d[i + 2]) / colorLum;
-        const a = Math.min(0.7, m * strength * 0.025 * amount);
+        const a = Math.min(0.7, m * strength * 0.1 * amount);
         d[i] += (Math.min(255, cr * k) - d[i]) * a;
         d[i + 1] += (Math.min(255, cg * k) - d[i + 1]) * a;
         d[i + 2] += (Math.min(255, cb * k) - d[i + 2]) * a;
@@ -240,16 +242,25 @@ function tintStamp(
   ctx.putImageData(img, reg.x0, reg.y0);
 }
 
-// 확대/축소: 브러시 안쪽을 중심에서 밀어내거나(확대) 끌어당긴다(축소). 가장자리는 원래대로 이어진다.
-function warpStamp(
+// 크기 조절 미리보기. 찍은 위치(cx, cy) 둘레를 base(보정 전 사진)에서 다시 그린 뒤 amount(-1~1)만큼 밀거나 당긴다.
+// amount가 양수면 커지고(키우기), 음수면 작아진다(줄이기). 0이면 base 그대로다.
+export function previewResize(
   canvas: HTMLCanvasElement,
-  sign: 1 | -1,
+  base: ImageData,
   cx: number,
   cy: number,
   rad: number,
-  strength: number,
   amount: number,
 ) {
+  const reg = regionOf(canvas, cx, cy, rad);
+  if (!reg) return;
+  const ctx = getCtx(canvas);
+  ctx.putImageData(base, 0, 0, reg.x0, reg.y0, reg.w, reg.h);
+  if (amount !== 0) warpStamp(canvas, amount * 0.5, cx, cy, rad);
+}
+
+// 브러시 안쪽을 중심에서 밀어내거나(k>0, 확대) 끌어당긴다(k<0, 축소). 가장자리는 원래대로 이어진다.
+function warpStamp(canvas: HTMLCanvasElement, k: number, cx: number, cy: number, rad: number) {
   const reg = regionOf(canvas, cx, cy, rad);
   if (!reg) return;
   const ctx = getCtx(canvas);
@@ -258,7 +269,6 @@ function warpStamp(
   out.data.set(src.data);
   const s = src.data;
   const o = out.data;
-  const k = Math.min(0.3, strength * 0.006 * amount);
 
   for (let y = 0; y < reg.h; y++) {
     for (let x = 0; x < reg.w; x++) {
@@ -266,7 +276,7 @@ function warpStamp(
       const dy = reg.y0 + y + 0.5 - cy;
       const d2 = (dx * dx + dy * dy) / (rad * rad);
       if (d2 >= 1) continue;
-      const scale = 1 - sign * k * (1 - d2) ** 2;
+      const scale = 1 - k * (1 - d2) ** 2;
       // 원본에서 읽어 올 위치(영역 안쪽 좌표). 확대는 중심 쪽에서, 축소는 바깥쪽에서 읽는다.
       const sx = Math.min(reg.w - 1, Math.max(0, cx + dx * scale - reg.x0 - 0.5));
       const sy = Math.min(reg.h - 1, Math.max(0, cy + dy * scale - reg.y0 - 0.5));
