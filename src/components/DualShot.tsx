@@ -419,12 +419,12 @@ export default function DualShot() {
 
       {bothTaken && (
         <div className="flex flex-col gap-3">
-          {/* 사진과 옆의 아이콘 탭을 위에 고정해 두고, 아래 칸에서 조절하면서 바로 볼 수 있게 한다. */}
+          {/* 사진을 위에 고정해 두고, 아이콘 탭은 사진 위에 얹어 사진이 작아지지 않게 한다. */}
           <div className="sticky top-0 z-20 -mx-4 bg-background px-4 pb-2 pt-2 shadow-sm">
-            <div className="flex items-start justify-center gap-2">
+            <div className="relative mx-auto w-[min(100%,calc(46dvh*0.75))]">
               <div
                 ref={stageRef}
-                className="relative aspect-[3/4] w-[min(calc(100%-3.25rem),calc(46dvh*0.75))] shrink-0 touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
+                className="relative aspect-[3/4] w-full touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
               >
                 <div className="absolute inset-0 overflow-hidden">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -535,7 +535,7 @@ export default function DualShot() {
               <div
                 role="tablist"
                 aria-orientation="vertical"
-                className="flex shrink-0 flex-col gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800"
+                className="absolute right-2 top-2 z-10 flex flex-col gap-1 rounded-xl bg-black/35 p-1 backdrop-blur-sm"
               >
                 {TABS.map((t) => (
                   <button
@@ -545,10 +545,10 @@ export default function DualShot() {
                     aria-label={t.label}
                     title={t.label}
                     onClick={() => setTab(t.id)}
-                    className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                    className={`flex h-9 w-9 items-center justify-center rounded-lg ${
                       tab === t.id
-                        ? "bg-white font-medium text-pink-600 shadow-sm dark:bg-zinc-700"
-                        : "text-zinc-500"
+                        ? "bg-white text-pink-600 shadow-sm"
+                        : "text-white/85"
                     }`}
                   >
                     <t.Icon className="h-5 w-5" />
