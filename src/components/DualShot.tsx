@@ -73,6 +73,15 @@ function shapeStyle(frame: Frame): React.CSSProperties {
 
 const MAX_TEXT_LENGTH = 120;
 
+const TABS = [
+  { id: "layout", label: "배치" },
+  { id: "adjust", label: "보정" },
+  { id: "text", label: "텍스트" },
+  { id: "save", label: "저장" },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
 const EXPORT_SIZE_LABEL = `${EXPORT_WIDTH}×${EXPORT_HEIGHT}`;
 
 export default function DualShot() {
@@ -98,6 +107,7 @@ export default function DualShot() {
   const [texts, setTexts] = useState<TextItem[]>([]);
   const [selectedText, setSelectedText] = useState<number | null>(null);
   const [editingText, setEditingText] = useState<number | null>(null);
+  const [tab, setTab] = useState<TabId>("layout");
   const lastTap = useRef<{ id: number; time: number } | null>(null);
   const nextTextId = useRef(1);
   const [favorites, setFavorites] = useState<string[]>(() =>
@@ -280,6 +290,7 @@ export default function DualShot() {
     const item = texts.find((x) => x.id === id);
     if (!stage || !item) return;
     setSelectedText(id);
+    setTab("text");
     e.currentTarget.setPointerCapture(e.pointerId);
     const rect = stage.getBoundingClientRect();
     const startX = e.clientX;
@@ -406,480 +417,516 @@ export default function DualShot() {
 
       {bothTaken && (
         <div className="flex flex-col gap-3">
-          <div
-            ref={stageRef}
-            className="relative aspect-[3/4] touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
-          >
-            <div className="absolute inset-0 overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={photos.big!}
-                alt="큰 사진"
-                className="h-full w-full object-cover"
-                style={{ filter: filterOf(adjust.big, filters.big) }}
-              />
-              <TextureLayers active={textures.big} />
-            </div>
+          {/* 사진은 위에 고정해 두고, 아래 탭에서 조절하면서 바로 볼 수 있게 한다. */}
+          <div className="sticky top-0 z-20 -mx-4 bg-background px-4 pb-2 pt-2 shadow-sm">
             <div
-              onPointerDown={startDrag}
-              className="absolute cursor-grab drop-shadow-lg"
-              style={{
-                width: `${smallSize}%`,
-                aspectRatio: aspect,
-                left: `${smallPos.x}%`,
-                top: `${smallPos.y}%`,
-              }}
+              ref={stageRef}
+              className="relative mx-auto aspect-[3/4] w-[min(100%,calc(46dvh*0.75))] touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
             >
+              <div className="absolute inset-0 overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photos.big!}
+                  alt="큰 사진"
+                  className="h-full w-full object-cover"
+                  style={{ filter: filterOf(adjust.big, filters.big) }}
+                />
+                <TextureLayers active={textures.big} />
+              </div>
               <div
-                className="h-full w-full overflow-hidden"
-                style={shapeStyle(frame)}
+                onPointerDown={startDrag}
+                className="absolute cursor-grab drop-shadow-lg"
+                style={{
+                  width: `${smallSize}%`,
+                  aspectRatio: aspect,
+                  left: `${smallPos.x}%`,
+                  top: `${smallPos.y}%`,
+                }}
               >
-                <div className="relative h-full w-full overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photos.small!}
-                    alt="작은 사진"
-                    draggable={false}
-                    className="h-full w-full object-cover"
-                    style={{ filter: filterOf(adjust.small, filters.small) }}
-                  />
-                  <TextureLayers active={textures.small} />
+                <div
+                  className="h-full w-full overflow-hidden"
+                  style={shapeStyle(frame)}
+                >
+                  <div className="relative h-full w-full overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photos.small!}
+                      alt="작은 사진"
+                      draggable={false}
+                      className="h-full w-full object-cover"
+                      style={{ filter: filterOf(adjust.small, filters.small) }}
+                    />
+                    <TextureLayers active={textures.small} />
+                  </div>
                 </div>
               </div>
-            </div>
-            {texts.map((t) => {
-              const style: React.CSSProperties = {
-                left: `${t.x}%`,
-                top: `${t.y}%`,
-                fontSize: `${t.size}cqw`,
-                fontFamily: fontCss(t.font),
-                fontWeight: t.weight,
-                transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
-                transformOrigin: "0 0",
-                color: t.color,
-                textShadow: textShadowCss(t),
-              };
-              if (editingText === t.id) {
-                // 사진 위에서 바로 고치는 중. Enter는 줄바꿈이고, Esc나 바깥을 누르면 끝난다.
-                // 숨은 span이 글자 크기만큼 칸을 늘려 textarea가 내용에 맞게 커진다.
+              {texts.map((t) => {
+                const style: React.CSSProperties = {
+                  left: `${t.x}%`,
+                  top: `${t.y}%`,
+                  fontSize: `${t.size}cqw`,
+                  fontFamily: fontCss(t.font),
+                  fontWeight: t.weight,
+                  transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
+                  transformOrigin: "0 0",
+                  color: t.color,
+                  textShadow: textShadowCss(t),
+                };
+                if (editingText === t.id) {
+                  // 사진 위에서 바로 고치는 중. Enter는 줄바꿈이고, Esc나 바깥을 누르면 끝난다.
+                  // 숨은 span이 글자 크기만큼 칸을 늘려 textarea가 내용에 맞게 커진다.
+                  return (
+                    <div
+                      key={t.id}
+                      className="absolute grid outline-2 outline-pink-500"
+                      style={style}
+                    >
+                      <span
+                        aria-hidden
+                        className="invisible col-start-1 row-start-1 whitespace-pre leading-tight"
+                      >
+                        {t.text + "\n "}
+                      </span>
+                      <textarea
+                        autoFocus
+                        wrap="off"
+                        rows={1}
+                        aria-label="텍스트 직접 수정"
+                        value={t.text}
+                        maxLength={MAX_TEXT_LENGTH}
+                        onFocus={(e) => e.currentTarget.select()}
+                        onChange={(e) => updateText(t.id, { text: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") e.currentTarget.blur();
+                        }}
+                        onBlur={() => setEditingText(null)}
+                        className="col-start-1 row-start-1 m-0 resize-none overflow-hidden whitespace-pre border-0 bg-transparent p-0 leading-tight outline-none"
+                        style={{
+                          font: "inherit",
+                          color: "inherit",
+                          textShadow: "inherit",
+                          width: 0, // 기본 너비가 상자를 넓히지 않도록 하고,
+                          minWidth: "100%", // 숨은 span이 정한 칸에 맞춘다.
+                        }}
+                      />
+                    </div>
+                  );
+                }
                 return (
                   <div
                     key={t.id}
-                    className="absolute grid outline-2 outline-pink-500"
+                    onPointerDown={(e) => startTextDrag(e, t.id)}
+                    className={`absolute cursor-grab touch-none whitespace-pre leading-tight ${
+                      selectedText === t.id
+                        ? "outline-2 outline-dashed outline-pink-400"
+                        : ""
+                    }`}
                     style={style}
                   >
-                    <span
-                      aria-hidden
-                      className="invisible col-start-1 row-start-1 whitespace-pre leading-tight"
-                    >
-                      {t.text + "\n "}
-                    </span>
-                    <textarea
-                      autoFocus
-                      wrap="off"
-                      rows={1}
-                      aria-label="텍스트 직접 수정"
-                      value={t.text}
-                      maxLength={MAX_TEXT_LENGTH}
-                      onFocus={(e) => e.currentTarget.select()}
-                      onChange={(e) => updateText(t.id, { text: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === "Escape") e.currentTarget.blur();
-                      }}
-                      onBlur={() => setEditingText(null)}
-                      className="col-start-1 row-start-1 m-0 resize-none overflow-hidden whitespace-pre border-0 bg-transparent p-0 leading-tight outline-none"
-                      style={{
-                        font: "inherit",
-                        color: "inherit",
-                        textShadow: "inherit",
-                        width: 0, // 기본 너비가 상자를 넓히지 않도록 하고,
-                        minWidth: "100%", // 숨은 span이 정한 칸에 맞춘다.
-                      }}
-                    />
+                    {t.text || " "}
                   </div>
                 );
-              }
-              return (
-                <div
-                  key={t.id}
-                  onPointerDown={(e) => startTextDrag(e, t.id)}
-                  className={`absolute cursor-grab touch-none whitespace-pre leading-tight ${
-                    selectedText === t.id
-                      ? "outline-2 outline-dashed outline-pink-400"
-                      : ""
-                  }`}
-                  style={style}
-                >
-                  {t.text || " "}
-                </div>
-              );
-            })}
+              })}
+            </div>
+
           </div>
 
-          <label className="flex items-center gap-3 text-sm">
-            작은 사진 크기
-            <input
-              type="range"
-              min={15}
-              max={60}
-              value={smallSize}
-              onChange={(e) => setSmallSize(Number(e.target.value))}
-              className="flex-1"
-            />
-          </label>
-          <div className="flex flex-wrap gap-2 text-sm">
-            {FRAMES.map((f) => (
+          <div
+            role="tablist"
+            className="grid grid-cols-4 gap-1 rounded-xl bg-zinc-100 p-1 text-sm dark:bg-zinc-800"
+          >
+            {TABS.map((t) => (
               <button
-                key={f.id}
-                onClick={() => setFrame(f.id)}
-                className={`rounded-full border px-3 py-1 ${
-                  frame === f.id ? "border-pink-500 bg-pink-50 text-pink-600" : ""
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`rounded-lg py-2 ${
+                  tab === t.id
+                    ? "bg-white font-medium text-pink-600 shadow-sm dark:bg-zinc-700"
+                    : "text-zinc-500"
                 }`}
               >
-                {f.label}
+                {t.label}
               </button>
             ))}
           </div>
 
-          <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
-            <div className="flex gap-2">
-              {(["big", "small"] as Slot[]).map((sl) => (
-                <button
-                  key={sl}
-                  onClick={() => setEditSlot(sl)}
-                  className={`flex-1 rounded-lg border py-1 ${
-                    editSlot === sl ? "border-pink-500 bg-pink-50 text-pink-600" : ""
-                  }`}
-                >
-                  {SLOT_LABEL[sl]} 보정
-                </button>
-              ))}
-            </div>
-            <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
-              {FILTERS.map((f) => (
+          {tab === "layout" && (
+            <div className="flex flex-col gap-3">
+            <label className="flex items-center gap-3 text-sm">
+              작은 사진 크기
+              <input
+                type="range"
+                min={15}
+                max={60}
+                value={smallSize}
+                onChange={(e) => setSmallSize(Number(e.target.value))}
+                className="flex-1"
+              />
+            </label>
+            <div className="flex flex-wrap gap-2 text-sm">
+              {FRAMES.map((f) => (
                 <button
                   key={f.id}
-                  onClick={() => setFilters((p) => ({ ...p, [editSlot]: f.id }))}
-                  className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${
-                    filters[editSlot] === f.id
-                      ? "border-pink-500 bg-pink-50 text-pink-600"
-                      : ""
+                  onClick={() => setFrame(f.id)}
+                  className={`rounded-full border px-3 py-1 ${
+                    frame === f.id ? "border-pink-500 bg-pink-50 text-pink-600" : ""
                   }`}
                 >
                   {f.label}
                 </button>
               ))}
             </div>
-            <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
-              {TEXTURES.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => toggleTexture(t.id)}
-                  className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${
-                    textures[editSlot].includes(t.id)
-                      ? "border-pink-500 bg-pink-50 text-pink-600"
-                      : ""
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            {(
-              [
-                ["brightness", "밝기"],
-                ["contrast", "대비"],
-                ["saturate", "채도"],
-              ] as [keyof Adjust, string][]
-            ).map(([key, label]) => (
-              <label key={key} className="flex items-center gap-3">
-                <span className="w-10">{label}</span>
-                <input
-                  type="range"
-                  min={50}
-                  max={150}
-                  value={adjust[editSlot][key]}
-                  onChange={(e) =>
-                    setAdjust((a) => ({
-                      ...a,
-                      [editSlot]: { ...a[editSlot], [key]: Number(e.target.value) },
-                    }))
-                  }
-                  className="flex-1"
-                />
-              </label>
-            ))}
-            <button
-              onClick={() => {
-                setAdjust((a) => ({ ...a, [editSlot]: NO_ADJUST }));
-                setFilters((f) => ({ ...f, [editSlot]: "none" }));
-                setTextures((t) => ({ ...t, [editSlot]: [] }));
-              }}
-              className="self-end text-zinc-500 underline"
-            >
-              초기화
-            </button>
-          </div>
 
-          <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
-            <button
-              onClick={addText}
-              className="rounded-lg border border-pink-500 py-1 text-pink-600"
-            >
-              + 텍스트 추가
-            </button>
-            {texts.length > 0 && (
-              <p className="text-xs text-zinc-500">
-                사진 위의 글자를 두 번 누르면 그 자리에서 고칠 수 있어요. Enter는 줄바꿈이고, 끝내려면 바깥을 누르세요.
-              </p>
-            )}
-            {texts.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto">
-                {texts.map((t) => (
+            <div className="flex gap-2 text-sm">
+              <button onClick={swap} className="flex-1 rounded-lg border py-2">
+                큰/작은 사진 바꾸기
+              </button>
+              <button
+                onClick={() => retake("big")}
+                className="flex-1 rounded-lg border py-2"
+              >
+                큰 사진 다시 찍기
+              </button>
+              <button
+                onClick={() => retake("small")}
+                className="flex-1 rounded-lg border py-2"
+              >
+                작은 사진 다시 찍기
+              </button>
+            </div>
+
+            </div>
+          )}
+
+          {tab === "adjust" && (
+            <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
+              <div className="flex gap-2">
+                {(["big", "small"] as Slot[]).map((sl) => (
                   <button
-                    key={t.id}
-                    onClick={() => setSelectedText(t.id)}
-                    className={`max-w-28 shrink-0 truncate rounded-full border px-3 py-1 ${
-                      selectedText === t.id
+                    key={sl}
+                    onClick={() => setEditSlot(sl)}
+                    className={`flex-1 rounded-lg border py-1 ${
+                      editSlot === sl ? "border-pink-500 bg-pink-50 text-pink-600" : ""
+                    }`}
+                  >
+                    {SLOT_LABEL[sl]} 보정
+                  </button>
+                ))}
+              </div>
+              <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setFilters((p) => ({ ...p, [editSlot]: f.id }))}
+                    className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${
+                      filters[editSlot] === f.id
                         ? "border-pink-500 bg-pink-50 text-pink-600"
                         : ""
                     }`}
                   >
-                    {t.text.replace(/\n/g, " ") || "(빈 텍스트)"}
+                    {f.label}
                   </button>
                 ))}
               </div>
-            )}
-            {texts.find((t) => t.id === selectedText) && (
-              <>
-                <textarea
-                  value={texts.find((t) => t.id === selectedText)!.text}
-                  onChange={(e) =>
-                    updateText(selectedText!, { text: e.target.value })
-                  }
-                  maxLength={MAX_TEXT_LENGTH}
-                  rows={2}
-                  placeholder="내용을 입력하세요 (Enter로 줄바꿈)"
-                  className="resize-none rounded-lg border px-3 py-2"
-                />
-                <label className="flex items-center gap-3">
-                  <span className="w-10">크기</span>
+              <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1">
+                {TEXTURES.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => toggleTexture(t.id)}
+                    className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${
+                      textures[editSlot].includes(t.id)
+                        ? "border-pink-500 bg-pink-50 text-pink-600"
+                        : ""
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {(
+                [
+                  ["brightness", "밝기"],
+                  ["contrast", "대비"],
+                  ["saturate", "채도"],
+                ] as [keyof Adjust, string][]
+              ).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-3">
+                  <span className="w-10">{label}</span>
                   <input
                     type="range"
-                    min={4}
-                    max={20}
-                    value={texts.find((t) => t.id === selectedText)!.size}
+                    min={50}
+                    max={150}
+                    value={adjust[editSlot][key]}
                     onChange={(e) =>
-                      updateText(selectedText!, { size: Number(e.target.value) })
+                      setAdjust((a) => ({
+                        ...a,
+                        [editSlot]: { ...a[editSlot], [key]: Number(e.target.value) },
+                      }))
                     }
                     className="flex-1"
                   />
                 </label>
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {FONTS.map((f) => (
+              ))}
+              <button
+                onClick={() => {
+                  setAdjust((a) => ({ ...a, [editSlot]: NO_ADJUST }));
+                  setFilters((f) => ({ ...f, [editSlot]: "none" }));
+                  setTextures((t) => ({ ...t, [editSlot]: [] }));
+                }}
+                className="self-end text-zinc-500 underline"
+              >
+                초기화
+              </button>
+            </div>
+          )}
+
+          {tab === "text" && (
+            <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
+              <button
+                onClick={addText}
+                className="rounded-lg border border-pink-500 py-1 text-pink-600"
+              >
+                + 텍스트 추가
+              </button>
+              {texts.length > 0 && (
+                <p className="text-xs text-zinc-500">
+                  사진 위의 글자를 두 번 누르면 그 자리에서 고칠 수 있어요. Enter는 줄바꿈이고, 끝내려면 바깥을 누르세요.
+                </p>
+              )}
+              {texts.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto">
+                  {texts.map((t) => (
                     <button
-                      key={f.id}
-                      onClick={() => updateText(selectedText!, { font: f.id })}
-                      className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${
-                        texts.find((t) => t.id === selectedText)!.font === f.id
+                      key={t.id}
+                      onClick={() => setSelectedText(t.id)}
+                      className={`max-w-28 shrink-0 truncate rounded-full border px-3 py-1 ${
+                        selectedText === t.id
                           ? "border-pink-500 bg-pink-50 text-pink-600"
                           : ""
                       }`}
-                      style={{ fontFamily: fontCss(f.id) }}
                     >
-                      {f.label}
+                      {t.text.replace(/\n/g, " ") || "(빈 텍스트)"}
                     </button>
                   ))}
                 </div>
-                {(
-                  [
-                    ["weight", "두께", 100, 900, 100],
-                    ["scaleY", "세로 길이", 50, 400, 10],
-                    ["scaleX", "가로 폭", 50, 200, 10],
-                  ] as [keyof TextItem, string, number, number, number][]
-                ).map(([key, label, min, max, step]) => (
-                  <label key={key} className="flex items-center gap-3">
-                    <span className="w-16">{label}</span>
+              )}
+              {texts.find((t) => t.id === selectedText) && (
+                <>
+                  <textarea
+                    value={texts.find((t) => t.id === selectedText)!.text}
+                    onChange={(e) =>
+                      updateText(selectedText!, { text: e.target.value })
+                    }
+                    maxLength={MAX_TEXT_LENGTH}
+                    rows={2}
+                    placeholder="내용을 입력하세요 (Enter로 줄바꿈)"
+                    className="resize-none rounded-lg border px-3 py-2"
+                  />
+                  <label className="flex items-center gap-3">
+                    <span className="w-10">크기</span>
                     <input
                       type="range"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={
-                        texts.find((t) => t.id === selectedText)![key] as number
-                      }
+                      min={4}
+                      max={20}
+                      value={texts.find((t) => t.id === selectedText)!.size}
                       onChange={(e) =>
-                        updateText(selectedText!, {
-                          [key]: Number(e.target.value),
-                        })
+                        updateText(selectedText!, { size: Number(e.target.value) })
                       }
                       className="flex-1"
                     />
                   </label>
-                ))}
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="w-10">색</span>
-                  {TEXT_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => updateText(selectedText!, { color: c })}
-                      aria-label={`색상 ${c}`}
-                      className={`h-7 w-7 rounded-full border ${
-                        texts.find((t) => t.id === selectedText)!.color === c
-                          ? "ring-2 ring-pink-500 ring-offset-1"
-                          : ""
-                      }`}
-                      style={{ background: c }}
-                    />
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {FONTS.map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => updateText(selectedText!, { font: f.id })}
+                        className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${
+                          texts.find((t) => t.id === selectedText)!.font === f.id
+                            ? "border-pink-500 bg-pink-50 text-pink-600"
+                            : ""
+                        }`}
+                        style={{ fontFamily: fontCss(f.id) }}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                  {(
+                    [
+                      ["weight", "두께", 100, 900, 100],
+                      ["scaleY", "세로 길이", 50, 400, 10],
+                      ["scaleX", "가로 폭", 50, 200, 10],
+                    ] as [keyof TextItem, string, number, number, number][]
+                  ).map(([key, label, min, max, step]) => (
+                    <label key={key} className="flex items-center gap-3">
+                      <span className="w-16">{label}</span>
+                      <input
+                        type="range"
+                        min={min}
+                        max={max}
+                        step={step}
+                        value={
+                          texts.find((t) => t.id === selectedText)![key] as number
+                        }
+                        onChange={(e) =>
+                          updateText(selectedText!, {
+                            [key]: Number(e.target.value),
+                          })
+                        }
+                        className="flex-1"
+                      />
+                    </label>
                   ))}
-                  <label
-                    className="relative flex h-7 cursor-pointer items-center gap-1 rounded-full border px-2 text-xs"
-                    title="색상 직접 고르기"
-                  >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-10">색</span>
+                    {TEXT_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => updateText(selectedText!, { color: c })}
+                        aria-label={`색상 ${c}`}
+                        className={`h-7 w-7 rounded-full border ${
+                          texts.find((t) => t.id === selectedText)!.color === c
+                            ? "ring-2 ring-pink-500 ring-offset-1"
+                            : ""
+                        }`}
+                        style={{ background: c }}
+                      />
+                    ))}
+                    <label
+                      className="relative flex h-7 cursor-pointer items-center gap-1 rounded-full border px-2 text-xs"
+                      title="색상 직접 고르기"
+                    >
+                      <input
+                        type="color"
+                        value={texts.find((t) => t.id === selectedText)!.color}
+                        onChange={(e) =>
+                          updateText(selectedText!, { color: e.target.value })
+                        }
+                        className="h-5 w-5 cursor-pointer border-0 bg-transparent p-0"
+                      />
+                      직접 선택
+                    </label>
+                    <button
+                      onClick={() =>
+                        addFavorite(texts.find((t) => t.id === selectedText)!.color)
+                      }
+                      className="h-7 rounded-full border border-pink-500 px-2 text-xs text-pink-600"
+                    >
+                      ★ 보관함에 추가
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-zinc-500">
+                      색상 보관함 {favorites.length > 0 ? "(누르면 적용)" : ""}
+                    </span>
+                    {favorites.length === 0 ? (
+                      <p className="text-xs text-zinc-400">
+                        자주 쓰는 색을 ★로 추가해 두세요.
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {favorites.map((c) => (
+                          <span key={c} className="relative">
+                            <button
+                              onClick={() => updateText(selectedText!, { color: c })}
+                              aria-label={`보관함 색상 ${c}`}
+                              className="h-7 w-7 rounded-full border"
+                              style={{ background: c }}
+                            />
+                            <button
+                              onClick={() => removeFavorite(c)}
+                              aria-label={`보관함에서 ${c} 삭제`}
+                              className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-[10px] leading-none text-white"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {(
+                    [
+                      ["shadowAlpha", "그림자", 0, 100, 5],
+                      ["shadowBlur", "흐림", 0, 20, 1],
+                      ["shadowOffset", "거리", 0, 20, 1],
+                    ] as [keyof TextItem, string, number, number, number][]
+                  ).map(([key, label, min, max, step]) => (
+                    <label key={key} className="flex items-center gap-3">
+                      <span className="w-16">{label}</span>
+                      <input
+                        type="range"
+                        min={min}
+                        max={max}
+                        step={step}
+                        value={
+                          texts.find((t) => t.id === selectedText)![key] as number
+                        }
+                        onChange={(e) =>
+                          updateText(selectedText!, {
+                            [key]: Number(e.target.value),
+                          })
+                        }
+                        className="flex-1"
+                      />
+                    </label>
+                  ))}
+                  <label className="flex items-center gap-3">
+                    <span className="w-16">그림자 색</span>
                     <input
                       type="color"
-                      value={texts.find((t) => t.id === selectedText)!.color}
+                      value={texts.find((t) => t.id === selectedText)!.shadowColor}
                       onChange={(e) =>
-                        updateText(selectedText!, { color: e.target.value })
+                        updateText(selectedText!, { shadowColor: e.target.value })
                       }
-                      className="h-5 w-5 cursor-pointer border-0 bg-transparent p-0"
+                      className="h-6 w-10 cursor-pointer border-0 bg-transparent p-0"
                     />
-                    직접 선택
                   </label>
                   <button
-                    onClick={() =>
-                      addFavorite(texts.find((t) => t.id === selectedText)!.color)
-                    }
-                    className="h-7 rounded-full border border-pink-500 px-2 text-xs text-pink-600"
+                    onClick={() => removeText(selectedText!)}
+                    className="self-end text-zinc-500 underline"
                   >
-                    ★ 보관함에 추가
+                    이 텍스트 삭제
                   </button>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs text-zinc-500">
-                    색상 보관함 {favorites.length > 0 ? "(누르면 적용)" : ""}
-                  </span>
-                  {favorites.length === 0 ? (
-                    <p className="text-xs text-zinc-400">
-                      자주 쓰는 색을 ★로 추가해 두세요.
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {favorites.map((c) => (
-                        <span key={c} className="relative">
-                          <button
-                            onClick={() => updateText(selectedText!, { color: c })}
-                            aria-label={`보관함 색상 ${c}`}
-                            className="h-7 w-7 rounded-full border"
-                            style={{ background: c }}
-                          />
-                          <button
-                            onClick={() => removeFavorite(c)}
-                            aria-label={`보관함에서 ${c} 삭제`}
-                            className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-[10px] leading-none text-white"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {(
-                  [
-                    ["shadowAlpha", "그림자", 0, 100, 5],
-                    ["shadowBlur", "흐림", 0, 20, 1],
-                    ["shadowOffset", "거리", 0, 20, 1],
-                  ] as [keyof TextItem, string, number, number, number][]
-                ).map(([key, label, min, max, step]) => (
-                  <label key={key} className="flex items-center gap-3">
-                    <span className="w-16">{label}</span>
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={
-                        texts.find((t) => t.id === selectedText)![key] as number
-                      }
-                      onChange={(e) =>
-                        updateText(selectedText!, {
-                          [key]: Number(e.target.value),
-                        })
-                      }
-                      className="flex-1"
-                    />
-                  </label>
-                ))}
-                <label className="flex items-center gap-3">
-                  <span className="w-16">그림자 색</span>
-                  <input
-                    type="color"
-                    value={texts.find((t) => t.id === selectedText)!.shadowColor}
-                    onChange={(e) =>
-                      updateText(selectedText!, { shadowColor: e.target.value })
-                    }
-                    className="h-6 w-10 cursor-pointer border-0 bg-transparent p-0"
-                  />
-                </label>
-                <button
-                  onClick={() => removeText(selectedText!)}
-                  className="self-end text-zinc-500 underline"
-                >
-                  이 텍스트 삭제
-                </button>
-              </>
-            )}
-          </div>
-
-          <div className="flex gap-2 text-sm">
-            <button onClick={swap} className="flex-1 rounded-lg border py-2">
-              큰/작은 사진 바꾸기
-            </button>
-            <button
-              onClick={() => retake("big")}
-              className="flex-1 rounded-lg border py-2"
-            >
-              큰 사진 다시 찍기
-            </button>
-            <button
-              onClick={() => retake("small")}
-              className="flex-1 rounded-lg border py-2"
-            >
-              작은 사진 다시 찍기
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="w-16">저장 형식</span>
-              {(["jpg", "png"] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setFormat(f)}
-                  className={`rounded-full border px-3 py-1 uppercase ${
-                    format === f ? "border-pink-500 bg-pink-50 text-pink-600" : ""
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
-              <span className="text-xs text-zinc-500">
-                {EXPORT_SIZE_LABEL}
-              </span>
+                </>
+              )}
             </div>
-            <button
-              onClick={saveEdited}
-              disabled={saving}
-              className="rounded-full bg-pink-500 py-3 font-medium text-white disabled:opacity-50"
-            >
-              {saving ? "저장하는 중..." : "편집본 저장"}
-            </button>
-            <button onClick={saveOriginals} className="rounded-full border py-2">
-              원본 사진 2장 저장
-            </button>
-            {saveError && <p className="text-red-500">{saveError}</p>}
-          </div>
+          )}
+
+          {tab === "save" && (
+            <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="w-16">저장 형식</span>
+                {(["jpg", "png"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFormat(f)}
+                    className={`rounded-full border px-3 py-1 uppercase ${
+                      format === f ? "border-pink-500 bg-pink-50 text-pink-600" : ""
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+                <span className="text-xs text-zinc-500">
+                  {EXPORT_SIZE_LABEL}
+                </span>
+              </div>
+              <button
+                onClick={saveEdited}
+                disabled={saving}
+                className="rounded-full bg-pink-500 py-3 font-medium text-white disabled:opacity-50"
+              >
+                {saving ? "저장하는 중..." : "편집본 저장"}
+              </button>
+              <button onClick={saveOriginals} className="rounded-full border py-2">
+                원본 사진 2장 저장
+              </button>
+              {saveError && <p className="text-red-500">{saveError}</p>}
+            </div>
+          )}
         </div>
       )}
     </section>
