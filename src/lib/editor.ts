@@ -82,5 +82,10 @@ export const FONTS = [
 
 export type FontId = (typeof FONTS)[number]["id"];
 
+// 영문 전용 글꼴로 한글을 쓰면 글자가 깨지지 않도록 한글 고딕을 대체 글꼴로 이어 붙인다.
+const FALLBACK_VAR = "--font-noto-sans-kr";
+
 export const fontCss = (id: FontId) =>
-  `var(${FONTS.find((f) => f.id === id)!.cssVar}), sans-serif`;
+  `var(${FONTS.find((f) => f.id === id)!.cssVar}), var(${FALLBACK_VAR}), sans-serif`;
+
+export const FONT_FALLBACK_VAR = FALLBACK_VAR;

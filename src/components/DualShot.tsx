@@ -71,6 +71,8 @@ function shapeStyle(frame: Frame): React.CSSProperties {
   }
 }
 
+const MAX_TEXT_LENGTH = 120;
+
 const EXPORT_SIZE_LABEL = `${EXPORT_WIDTH}×${EXPORT_HEIGHT}`;
 
 export default function DualShot() {
@@ -458,41 +460,43 @@ export default function DualShot() {
                 textShadow: textShadowCss(t),
               };
               if (editingText === t.id) {
-                // 사진 위에서 바로 고치는 중. 내용은 입력하는 대로 반영한다.
+                // 사진 위에서 바로 고치는 중. Enter는 줄바꿈이고, Esc나 바깥을 누르면 끝난다.
+                // 숨은 span이 글자 크기만큼 칸을 늘려 textarea가 내용에 맞게 커진다.
                 return (
                   <div
                     key={t.id}
-                    contentEditable
-                    suppressContentEditableWarning
-                    role="textbox"
-                    aria-label="텍스트 직접 수정"
-                    ref={(el) => {
-                      if (!el || el.dataset.init === "1") return;
-                      el.dataset.init = "1";
-                      el.textContent = t.text;
-                      el.focus();
-                      const range = document.createRange();
-                      range.selectNodeContents(el);
-                      const sel = window.getSelection();
-                      sel?.removeAllRanges();
-                      sel?.addRange(range);
-                    }}
-                    onInput={(e) => {
-                      const el = e.currentTarget;
-                      const text = (el.textContent ?? "").slice(0, 60);
-                      if (el.textContent !== text) el.textContent = text;
-                      updateText(t.id, { text });
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === "Escape") {
-                        e.preventDefault();
-                        e.currentTarget.blur();
-                      }
-                    }}
-                    onBlur={() => setEditingText(null)}
-                    className="absolute min-w-[1ch] cursor-text whitespace-pre leading-tight outline-2 outline-pink-500"
+                    className="absolute grid outline-2 outline-pink-500"
                     style={style}
-                  />
+                  >
+                    <span
+                      aria-hidden
+                      className="invisible col-start-1 row-start-1 whitespace-pre leading-tight"
+                    >
+                      {t.text + "\n "}
+                    </span>
+                    <textarea
+                      autoFocus
+                      wrap="off"
+                      rows={1}
+                      aria-label="텍스트 직접 수정"
+                      value={t.text}
+                      maxLength={MAX_TEXT_LENGTH}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onChange={(e) => updateText(t.id, { text: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") e.currentTarget.blur();
+                      }}
+                      onBlur={() => setEditingText(null)}
+                      className="col-start-1 row-start-1 m-0 resize-none overflow-hidden whitespace-pre border-0 bg-transparent p-0 leading-tight outline-none"
+                      style={{
+                        font: "inherit",
+                        color: "inherit",
+                        textShadow: "inherit",
+                        width: 0, // 기본 너비가 상자를 넓히지 않도록 하고,
+                        minWidth: "100%", // 숨은 span이 정한 칸에 맞춘다.
+                      }}
+                    />
+                  </div>
                 );
               }
               return (
@@ -626,7 +630,7 @@ export default function DualShot() {
             </button>
             {texts.length > 0 && (
               <p className="text-xs text-zinc-500">
-                사진 위의 글자를 두 번 누르면 그 자리에서 고칠 수 있어요.
+                사진 위의 글자를 두 번 누르면 그 자리에서 고칠 수 있어요. Enter는 줄바꿈이고, 끝내려면 바깥을 누르세요.
               </p>
             )}
             {texts.length > 0 && (
@@ -641,21 +645,22 @@ export default function DualShot() {
                         : ""
                     }`}
                   >
-                    {t.text || "(빈 텍스트)"}
+                    {t.text.replace(/\n/g, " ") || "(빈 텍스트)"}
                   </button>
                 ))}
               </div>
             )}
             {texts.find((t) => t.id === selectedText) && (
               <>
-                <input
+                <textarea
                   value={texts.find((t) => t.id === selectedText)!.text}
                   onChange={(e) =>
                     updateText(selectedText!, { text: e.target.value })
                   }
-                  maxLength={60}
-                  placeholder="내용을 입력하세요"
-                  className="rounded-lg border px-3 py-2"
+                  maxLength={MAX_TEXT_LENGTH}
+                  rows={2}
+                  placeholder="내용을 입력하세요 (Enter로 줄바꿈)"
+                  className="resize-none rounded-lg border px-3 py-2"
                 />
                 <label className="flex items-center gap-3">
                   <span className="w-10">크기</span>

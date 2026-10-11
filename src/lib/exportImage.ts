@@ -1,6 +1,7 @@
 // 화면의 미리보기(CSS)와 같은 결과를 canvas로 다시 그려 이미지 파일로 만든다.
 import { canvasFilterSupported, applyFilterToImageData } from "./cssFilter";
 import {
+  FONT_FALLBACK_VAR,
   FONTS,
   FRAMES,
   filterOf,
@@ -255,8 +256,11 @@ function innerBox(frame: Frame, box: Box, k: number): Box {
 
 function fontFamily(item: TextItem): string {
   const cssVar = FONTS.find((f) => f.id === item.font)!.cssVar;
-  const v = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
-  return v ? `${v}, sans-serif` : "sans-serif";
+  const style = getComputedStyle(document.documentElement);
+  const families = [cssVar, FONT_FALLBACK_VAR]
+    .map((name) => style.getPropertyValue(name).trim())
+    .filter(Boolean);
+  return [...families, "sans-serif"].join(", ");
 }
 
 export async function renderDualShot(input: ExportInput): Promise<HTMLCanvasElement> {
@@ -336,7 +340,10 @@ export async function renderDualShot(input: ExportInput): Promise<HTMLCanvasElem
     }
     ctx.translate((t.x / 100) * W, (t.y / 100) * H);
     ctx.scale(t.scaleX / 100, t.scaleY / 100);
-    ctx.fillText(t.text, 0, px * 0.625); // line-height 1.25의 가운데
+    // 줄 높이는 화면과 같은 1.25배. 각 줄은 줄 높이의 가운데에 맞춘다.
+    t.text.split("\n").forEach((line, i) => {
+      ctx.fillText(line, 0, px * 0.625 + i * px * 1.25);
+    });
     ctx.restore();
   }
 
