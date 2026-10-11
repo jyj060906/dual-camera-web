@@ -2,37 +2,30 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { TEXTURES, TextureLayers, type TextureId } from "./textures";
-
-type Slot = "big" | "small";
+import {
+  EXPORT_HEIGHT,
+  EXPORT_WIDTH,
+  canvasToBlob,
+  downloadUrl,
+  renderDualShot,
+  timestampName,
+} from "@/lib/exportImage";
+import {
+  FILTERS,
+  FONTS,
+  FRAMES,
+  NO_ADJUST,
+  STAR_CLIP,
+  filterOf,
+  fontCss,
+  type Adjust,
+  type FilterId,
+  type Frame,
+  type Slot,
+  type TextItem,
+} from "@/lib/editor";
 
 const SLOT_LABEL: Record<Slot, string> = { big: "큰 사진", small: "작은 사진" };
-
-// 띠지는 디자인이 미정이라 제외했다.
-type Frame = "rounded" | "square" | "circle" | "heart" | "star" | "polaroid";
-
-const FRAMES: { id: Frame; label: string; aspect: number }[] = [
-  { id: "rounded", label: "기본", aspect: 3 / 4 },
-  { id: "square", label: "네모", aspect: 1 },
-  { id: "circle", label: "동그라미", aspect: 1 },
-  { id: "heart", label: "하트", aspect: 1 },
-  { id: "star", label: "별", aspect: 1 },
-  { id: "polaroid", label: "폴라로이드", aspect: 4 / 5 },
-];
-
-const STAR_CLIP =
-  "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)";
-
-type TextItem = {
-  id: number;
-  text: string;
-  x: number; // 사진 틀 너비 대비 %
-  y: number; // 사진 틀 높이 대비 %
-  size: number; // 사진 틀 너비 대비 %
-  color: string;
-  weight: number; // 글자 두께 100~900
-  scaleX: number; // 가로 폭 %
-  scaleY: number; // 세로 길이 %
-};
 
 const FAVORITES_KEY = "dual-camera.favoriteColors";
 const MAX_FAVORITES = 20;
@@ -60,32 +53,6 @@ function saveFavorites(list: string[]) {
 
 const TEXT_COLORS = ["#ffffff", "#000000", "#ec4899", "#facc15", "#38bdf8"];
 
-type Adjust = { brightness: number; contrast: number; saturate: number };
-const NO_ADJUST: Adjust = { brightness: 100, contrast: 100, saturate: 100 };
-
-// 필터를 늘리려면 이 목록에 한 줄만 추가하면 된다. effect는 CSS filter 값이다.
-const FILTERS = [
-  { id: "none", label: "원본", effect: "" },
-  { id: "bw", label: "흑백", effect: "grayscale(1)" },
-  { id: "warm", label: "따뜻한", effect: "sepia(0.35) saturate(1.2)" },
-  { id: "cool", label: "차가운", effect: "sepia(0.25) hue-rotate(170deg) saturate(1.1)" },
-  { id: "vintage", label: "빈티지", effect: "sepia(0.5) contrast(0.9) brightness(1.05)" },
-  { id: "yellow", label: "노랑", effect: "sepia(0.4) hue-rotate(12deg) saturate(1.1) contrast(0.88) brightness(1.08)" },
-  { id: "digicam", label: "디카", effect: "brightness(1.15) contrast(1.12) saturate(0.85) hue-rotate(-6deg)" },
-  { id: "film", label: "필름", effect: "sepia(0.3) hue-rotate(-10deg) saturate(0.8) contrast(0.85) brightness(1.05)" },
-  { id: "glow", label: "글로우", effect: "sepia(0.35) saturate(1.1) contrast(0.9) brightness(1.12) blur(0.5px)" },
-  { id: "creampink", label: "크림핑크", effect: "sepia(0.2) hue-rotate(-5deg) saturate(1.1) contrast(0.92) brightness(1.1)" },
-  { id: "flash", label: "플래시", effect: "contrast(1.35) brightness(1.2) saturate(0.7)" },
-  { id: "warmred", label: "웜레드", effect: "sepia(0.35) hue-rotate(-12deg) saturate(1.3) contrast(1.1) brightness(0.98)" },
-] as const;
-
-type FilterId = (typeof FILTERS)[number]["id"];
-
-const filterOf = (a: Adjust, f: FilterId) =>
-  `brightness(${a.brightness}%) contrast(${a.contrast}%) saturate(${a.saturate}%) ${
-    FILTERS.find((x) => x.id === f)!.effect
-  }`;
-
 function shapeStyle(frame: Frame): React.CSSProperties {
   switch (frame) {
     case "rounded":
@@ -102,6 +69,8 @@ function shapeStyle(frame: Frame): React.CSSProperties {
       return { background: "white", padding: "6% 6% 22%" };
   }
 }
+
+const EXPORT_SIZE_LABEL = `${EXPORT_WIDTH}×${EXPORT_HEIGHT}`;
 
 export default function DualShot() {
   const [photos, setPhotos] = useState<Record<Slot, string | null>>({
@@ -129,6 +98,9 @@ export default function DualShot() {
   const [favorites, setFavorites] = useState<string[]>(() =>
     typeof window === "undefined" ? [] : loadFavorites(),
   );
+  const [format, setFormat] = useState<"jpg" | "png">("jpg");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [editSlot, setEditSlot] = useState<Slot>("big");
   const [smallSize, setSmallSize] = useState(32); // 큰 사진 너비 대비 %
   const [smallPos, setSmallPos] = useState({ x: 6, y: 6 }); // 왼쪽·위 기준 %
@@ -224,6 +196,7 @@ export default function DualShot() {
         weight: 700,
         scaleX: 100,
         scaleY: 100,
+        font: "default",
       },
     ]);
     setSelectedText(id);
@@ -231,6 +204,45 @@ export default function DualShot() {
 
   function updateText(id: number, patch: Partial<TextItem>) {
     setTexts((t) => t.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }
+
+  async function saveEdited() {
+    const stage = stageRef.current;
+    if (!stage || !photos.big || !photos.small) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const canvas = await renderDualShot({
+        photos: { big: photos.big, small: photos.small },
+        adjust,
+        filters,
+        textures,
+        frame,
+        smallSize,
+        smallPos,
+        texts,
+        stageWidthPx: stage.getBoundingClientRect().width,
+      });
+      const blob = await canvasToBlob(
+        canvas,
+        format === "png" ? "image/png" : "image/jpeg",
+      );
+      const url = URL.createObjectURL(blob);
+      downloadUrl(url, `${timestampName()}.${format}`);
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "저장하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function saveOriginals() {
+    if (!photos.big || !photos.small) return;
+    const name = timestampName();
+    downloadUrl(photos.big, `${name}-original-big.jpg`);
+    // 브라우저가 한꺼번에 여러 파일을 내려받는 것을 막지 않도록 간격을 둔다.
+    setTimeout(() => downloadUrl(photos.small!, `${name}-original-small.jpg`), 400);
   }
 
   function addFavorite(color: string) {
@@ -427,7 +439,7 @@ export default function DualShot() {
                   left: `${t.x}%`,
                   top: `${t.y}%`,
                   fontSize: `${t.size}cqw`,
-                  fontFamily: "var(--font-geist-sans), sans-serif",
+                  fontFamily: fontCss(t.font),
                   fontWeight: t.weight,
                   transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
                   transformOrigin: "0 0",
@@ -593,6 +605,22 @@ export default function DualShot() {
                     className="flex-1"
                   />
                 </label>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {FONTS.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => updateText(selectedText!, { font: f.id })}
+                      className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 ${
+                        texts.find((t) => t.id === selectedText)!.font === f.id
+                          ? "border-pink-500 bg-pink-50 text-pink-600"
+                          : ""
+                      }`}
+                      style={{ fontFamily: fontCss(f.id) }}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
                 {(
                   [
                     ["weight", "두께", 100, 900, 100],
@@ -713,6 +741,37 @@ export default function DualShot() {
             >
               작은 사진 다시 찍기
             </button>
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="w-16">저장 형식</span>
+              {(["jpg", "png"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFormat(f)}
+                  className={`rounded-full border px-3 py-1 uppercase ${
+                    format === f ? "border-pink-500 bg-pink-50 text-pink-600" : ""
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+              <span className="text-xs text-zinc-500">
+                {EXPORT_SIZE_LABEL}
+              </span>
+            </div>
+            <button
+              onClick={saveEdited}
+              disabled={saving}
+              className="rounded-full bg-pink-500 py-3 font-medium text-white disabled:opacity-50"
+            >
+              {saving ? "저장하는 중..." : "편집본 저장"}
+            </button>
+            <button onClick={saveOriginals} className="rounded-full border py-2">
+              원본 사진 2장 저장
+            </button>
+            {saveError && <p className="text-red-500">{saveError}</p>}
           </div>
         </div>
       )}
