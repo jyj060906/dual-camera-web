@@ -29,6 +29,14 @@
 
 `service_role` 키는 **절대** 이 앱에 넣지 마세요. anon 키는 공개돼도 되지만, 데이터 보호는 `schema.sql`의 규칙(RLS)이 맡습니다.
 
+## 설정 점검
+
+`.env.local`을 채운 뒤 아래를 실행하면 Confirm email, 구글·카카오 활성화, `schema.sql` 적용 여부를 한 번에 확인합니다. 키는 출력하지 않아서 결과를 그대로 공유해도 안전합니다.
+
+```bash
+node scripts/check-supabase.mjs
+```
+
 ## 4. 구글 로그인
 
 1. Google Cloud Console → API 및 서비스 → 사용자 인증 정보 → **OAuth 클라이언트 ID(웹 애플리케이션)** 만들기
