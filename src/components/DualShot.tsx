@@ -32,6 +32,12 @@ const FILTERS = [
   { id: "cool", label: "차가운", effect: "sepia(0.25) hue-rotate(170deg) saturate(1.1)" },
   { id: "vintage", label: "빈티지", effect: "sepia(0.5) contrast(0.9) brightness(1.05)" },
   { id: "yellow", label: "노랑", effect: "sepia(0.4) hue-rotate(12deg) saturate(1.1) contrast(0.88) brightness(1.08)" },
+  { id: "digicam", label: "디카", effect: "brightness(1.15) contrast(1.12) saturate(0.85) hue-rotate(-6deg)" },
+  { id: "green", label: "그린", effect: "sepia(0.4) hue-rotate(85deg) saturate(1.3) brightness(1.1) contrast(1.05)" },
+  { id: "purple", label: "퍼플", effect: "sepia(0.35) hue-rotate(250deg) saturate(1.5) brightness(1.05) contrast(0.95)" },
+  { id: "film", label: "필름", effect: "sepia(0.3) hue-rotate(-10deg) saturate(0.8) contrast(0.85) brightness(1.05)" },
+  { id: "glow", label: "글로우", effect: "sepia(0.35) saturate(1.1) contrast(0.9) brightness(1.12) blur(0.5px)" },
+  { id: "creampink", label: "크림핑크", effect: "sepia(0.2) hue-rotate(-5deg) saturate(1.1) contrast(0.92) brightness(1.1)" },
 ] as const;
 
 type FilterId = (typeof FILTERS)[number]["id"];
