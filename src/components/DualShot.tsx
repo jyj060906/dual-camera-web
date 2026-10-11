@@ -77,13 +77,14 @@ function shapeStyle(frame: Frame, border: Border): React.CSSProperties {
         return base;
     }
   }
+  // 띠지가 꺼져 있으면 테두리가 없다(폴라로이드는 흰 띠가 프레임 모양 자체다).
   switch (frame) {
     case "rounded":
-      return { borderRadius: "0.75rem", border: "2px solid white" };
+      return { borderRadius: "0.75rem" };
     case "square":
-      return { border: "2px solid white" };
+      return {};
     case "circle":
-      return { borderRadius: "50%", border: "2px solid white" };
+      return { borderRadius: "50%" };
     case "heart":
       return { clipPath: "url(#dual-heart)" };
     case "star":

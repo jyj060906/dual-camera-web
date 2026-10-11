@@ -239,10 +239,9 @@ function traceShape(
 }
 
 // 프레임 안쪽에 사진이 들어가는 영역.
-// border가 켜져 있으면 그 두께(px)만큼, 아니면 프레임 기본 여백만큼 안쪽으로 들어간다.
-function frameInset(frame: Frame, k: number, borderPx: number | null): number {
-  if (borderPx !== null) return borderPx;
-  return frame === "heart" || frame === "star" ? 0 : 2 * k;
+// 띠지(border)가 켜져 있으면 그 두께(px)만큼 안쪽으로 들어가고, 꺼져 있으면 테두리가 없다.
+function frameInset(borderPx: number | null): number {
+  return borderPx ?? 0;
 }
 
 function innerBox(frame: Frame, box: Box, k: number, borderPx: number | null): Box {
@@ -252,7 +251,7 @@ function innerBox(frame: Frame, box: Box, k: number, borderPx: number | null): B
     const bottom = borderPx !== null ? borderPx * (22 / 6) : 0.22 * box.w;
     return { x: box.x + pad, y: box.y + pad, w: box.w - 2 * pad, h: box.h - pad - bottom };
   }
-  const b = frameInset(frame, k, borderPx);
+  const b = frameInset(borderPx);
   return { x: box.x + b, y: box.y + b, w: box.w - 2 * b, h: box.h - 2 * b };
 }
 
@@ -321,7 +320,7 @@ export async function renderDualShot(input: ExportInput): Promise<HTMLCanvasElem
     ctx.beginPath();
     ctx.rect(inner.x, inner.y, inner.w, inner.h);
   } else {
-    traceShape(ctx, input.frame, box, k, frameInset(input.frame, k, borderPx));
+    traceShape(ctx, input.frame, box, k, frameInset(borderPx));
   }
   ctx.clip();
   drawPhoto(ctx, smallImg, inner, filterOf(input.adjust.small, input.filters.small), k);
