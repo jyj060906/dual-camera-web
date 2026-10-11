@@ -200,9 +200,11 @@ export default function DualShot() {
         y: Math.min(Math.max(0, y), maxY),
       });
     };
-    const up = () => {
+    const up = (ev: PointerEvent) => {
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
+      // 거의 움직이지 않았으면 끌기가 아니라 탭으로 보고 큰/작은 사진을 바꾼다.
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 6) swap();
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up);
