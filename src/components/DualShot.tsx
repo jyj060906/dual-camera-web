@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { TEXTURES, TextureLayers, type TextureId } from "./textures";
-import { AdjustIcon, LayoutIcon, SaveIcon, TextIcon } from "./icons";
+import RetouchView from "./RetouchView";
+import { AdjustIcon, FaceIcon, LayoutIcon, SaveIcon, TextIcon } from "./icons";
+import { createWork, getCtx, type Tool, type Work } from "@/lib/retouch";
 import {
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
@@ -82,11 +84,21 @@ const MAX_TEXT_LENGTH = 120;
 const TABS = [
   { id: "layout", label: "배치", Icon: LayoutIcon },
   { id: "adjust", label: "보정", Icon: AdjustIcon },
+  { id: "retouch", label: "얼굴", Icon: FaceIcon },
   { id: "text", label: "텍스트", Icon: TextIcon },
   { id: "save", label: "저장", Icon: SaveIcon },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+const RETOUCH_TOOLS: { id: Tool; label: string; hint: string }[] = [
+  { id: "smooth", label: "피부 보정", hint: "매끈하게 하고 싶은 곳을 문질러 주세요. 눈·입술 같은 윤곽은 선명하게 남아요." },
+  { id: "heal", label: "잡티 지우기", hint: "지우고 싶은 점이나 여드름을 콕 눌러 주세요. 브러시를 점보다 조금 크게 맞추면 깔끔해요." },
+  { id: "brighten", label: "화사하게", hint: "밝게 하고 싶은 곳을 문질러 주세요. 누르고 있으면 점점 밝아져요." },
+  { id: "color", label: "볼터치·립 색", hint: "볼이나 입술을 문질러 색을 입혀요. 색은 아래에서 고르세요." },
+  { id: "enlarge", label: "키우기", hint: "눈·코 등을 누르고 있거나 살짝 문질러 크게 해요. 누르고 있을수록 커져요." },
+  { id: "shrink", label: "줄이기", hint: "턱·코 등을 누르고 있거나 문질러 작게 해요. 누르고 있을수록 작아져요." },
+];
 
 const EXPORT_SIZE_LABEL = `${EXPORT_WIDTH}×${EXPORT_HEIGHT}`;
 
@@ -99,6 +111,18 @@ export default function DualShot() {
   const [error, setError] = useState<string | null>(null);
   const [frame, setFrame] = useState<Frame>("rounded");
   const [tape, setTape] = useState<Tape>(DEFAULT_TAPE);
+  // 얼굴 터치 보정: originals는 보정 전 사진, works는 보정 중인 복사본(canvas).
+  const [originals, setOriginals] = useState<Record<Slot, string | null>>({
+    big: null,
+    small: null,
+  });
+  const [works, setWorks] = useState<Record<Slot, Work | null>>({ big: null, small: null });
+  const [retouchSlot, setRetouchSlot] = useState<Slot>("big");
+  const [tool, setTool] = useState<Tool>("smooth");
+  const [brushSize, setBrushSize] = useState(6); // 사진 너비 대비 %
+  const [retouchStrength, setRetouchStrength] = useState(50);
+  const [retouchColor, setRetouchColor] = useState("#f472b6");
+  const [, setRetouchTick] = useState(0);
   const [adjust, setAdjust] = useState<Record<Slot, Adjust>>({
     big: NO_ADJUST,
     small: NO_ADJUST,
@@ -185,12 +209,16 @@ export default function DualShot() {
     canvas.getContext("2d")?.drawImage(video, 0, 0);
     const url = canvas.toDataURL("image/jpeg", 0.92);
     setPhotos((p) => ({ ...p, [slot]: url }));
+    setOriginals((o) => ({ ...o, [slot]: url }));
+    setWorks((w) => ({ ...w, [slot]: null }));
     const other: Slot = slot === "big" ? "small" : "big";
     if (!photos[other]) setSlot(other);
   }
 
   function retake(s: Slot) {
     setPhotos((p) => ({ ...p, [s]: null }));
+    setOriginals((o) => ({ ...o, [s]: null }));
+    setWorks((w) => ({ ...w, [s]: null }));
     setAdjust((a) => ({ ...a, [s]: NO_ADJUST }));
     setFilters((f) => ({ ...f, [s]: "none" }));
     setTextures((t) => ({ ...t, [s]: [] }));
@@ -199,6 +227,8 @@ export default function DualShot() {
 
   function swap() {
     setPhotos((p) => ({ big: p.small, small: p.big }));
+    setOriginals((o) => ({ big: o.small, small: o.big }));
+    setWorks((w) => ({ big: w.small, small: w.big }));
     setAdjust((a) => ({ big: a.small, small: a.big }));
     setFilters((f) => ({ big: f.small, small: f.big }));
     setTextures((t) => ({ big: t.small, small: t.big }));
@@ -264,12 +294,48 @@ export default function DualShot() {
     }
   }
 
+  // 얼굴 탭을 열면 보정할 사진의 복사본(canvas)을 만든다.
+  useEffect(() => {
+    const src = photos[retouchSlot];
+    if (tab !== "retouch" || !src || works[retouchSlot]) return;
+    let cancelled = false;
+    createWork(src).then((w) => {
+      if (!cancelled) setWorks((ws) => (ws[retouchSlot] ? ws : { ...ws, [retouchSlot]: w }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, retouchSlot, photos, works]);
+
+  function commitRetouch(slot: Slot, work: Work) {
+    const url = work.canvas.toDataURL("image/jpeg", 0.92);
+    setPhotos((p) => ({ ...p, [slot]: url }));
+    setRetouchTick((t) => t + 1);
+  }
+
+  function retouchUndo() {
+    const work = works[retouchSlot];
+    const snapshot = work?.undo.pop();
+    if (!work || !snapshot) return;
+    getCtx(work.canvas).putImageData(snapshot, 0, 0);
+    commitRetouch(retouchSlot, work);
+  }
+
+  async function retouchReset() {
+    const src = originals[retouchSlot];
+    if (!src) return;
+    const work = await createWork(src);
+    setWorks((ws) => ({ ...ws, [retouchSlot]: work }));
+    setPhotos((p) => ({ ...p, [retouchSlot]: src }));
+  }
+
   function saveOriginals() {
-    if (!photos.big || !photos.small) return;
+    // 원본은 얼굴 보정 전의 사진이다.
+    if (!originals.big || !originals.small) return;
     const name = timestampName();
-    downloadUrl(photos.big, `${name}-original-big.jpg`);
+    downloadUrl(originals.big, `${name}-original-big.jpg`);
     // 브라우저가 한꺼번에 여러 파일을 내려받는 것을 막지 않도록 간격을 둔다.
-    setTimeout(() => downloadUrl(photos.small!, `${name}-original-small.jpg`), 400);
+    setTimeout(() => downloadUrl(originals.small!, `${name}-original-small.jpg`), 400);
   }
 
   function addFavorite(color: string) {
@@ -428,127 +494,138 @@ export default function DualShot() {
           {/* 사진을 위에 고정해 두고, 아이콘 탭은 사진 위에 얹어 사진이 작아지지 않게 한다. */}
           <div className="sticky top-0 z-20 -mx-4 bg-background px-4 pb-2 pt-2 shadow-sm">
             <div className="relative mx-auto w-[min(100%,calc(46dvh*0.75))]">
-              <div
-                ref={stageRef}
-                className="relative aspect-[3/4] w-full touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
-              >
-                <div className="absolute inset-0 overflow-hidden">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photos.big!}
-                    alt="큰 사진"
-                    className="h-full w-full object-cover"
-                    style={{ filter: filterOf(adjust.big, filters.big) }}
-                  />
-                  <TextureLayers active={textures.big} />
-                </div>
+              {tab === "retouch" ? (
+                <RetouchView
+                  work={works[retouchSlot]}
+                  tool={tool}
+                  sizePct={brushSize}
+                  strength={retouchStrength / 100}
+                  color={retouchColor}
+                  onStrokeEnd={(w) => commitRetouch(retouchSlot, w)}
+                />
+              ) : (
                 <div
-                  onPointerDown={startDrag}
-                  className="absolute cursor-grab drop-shadow-lg"
-                  style={{
-                    width: `${smallSize}%`,
-                    aspectRatio: aspect,
-                    left: `${smallPos.x}%`,
-                    top: `${smallPos.y}%`,
-                  }}
+                  ref={stageRef}
+                  className="relative aspect-[3/4] w-full touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
                 >
-                  <div
-                    className="h-full w-full overflow-hidden"
-                    style={shapeStyle(frame)}
-                  >
-                    <div className="relative h-full w-full overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={photos.small!}
-                        alt="작은 사진"
-                        draggable={false}
-                        className="h-full w-full object-cover"
-                        style={{ filter: filterOf(adjust.small, filters.small) }}
-                      />
-                      <TextureLayers active={textures.small} />
-                    </div>
-                  </div>
-                  {tape.on && (
-                    <div
-                      aria-hidden
-                      className="absolute left-1/2 top-0"
-                      style={{
-                        width: `${(smallSize * tape.length) / 100}cqw`,
-                        height: `${tape.thickness}cqw`,
-                        transform: "translate(-50%, -50%)",
-                        background: hexToRgba(tape.color, TAPE_ALPHA),
-                      }}
+                  <div className="absolute inset-0 overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photos.big!}
+                      alt="큰 사진"
+                      className="h-full w-full object-cover"
+                      style={{ filter: filterOf(adjust.big, filters.big) }}
                     />
-                  )}
-                </div>
-                {texts.map((t) => {
-                  const style: React.CSSProperties = {
-                    left: `${t.x}%`,
-                    top: `${t.y}%`,
-                    fontSize: `${t.size}cqw`,
-                    fontFamily: fontCss(t.font),
-                    fontWeight: t.weight,
-                    transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
-                    transformOrigin: "0 0",
-                    color: t.color,
-                    textShadow: textShadowCss(t),
-                  };
-                  if (editingText === t.id) {
-                    // 사진 위에서 바로 고치는 중. Enter는 줄바꿈이고, Esc나 바깥을 누르면 끝난다.
-                    // 숨은 span이 글자 크기만큼 칸을 늘려 textarea가 내용에 맞게 커진다.
+                    <TextureLayers active={textures.big} />
+                  </div>
+                  <div
+                    onPointerDown={startDrag}
+                    className="absolute cursor-grab drop-shadow-lg"
+                    style={{
+                      width: `${smallSize}%`,
+                      aspectRatio: aspect,
+                      left: `${smallPos.x}%`,
+                      top: `${smallPos.y}%`,
+                    }}
+                  >
+                    <div
+                      className="h-full w-full overflow-hidden"
+                      style={shapeStyle(frame)}
+                    >
+                      <div className="relative h-full w-full overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={photos.small!}
+                          alt="작은 사진"
+                          draggable={false}
+                          className="h-full w-full object-cover"
+                          style={{ filter: filterOf(adjust.small, filters.small) }}
+                        />
+                        <TextureLayers active={textures.small} />
+                      </div>
+                    </div>
+                    {tape.on && (
+                      <div
+                        aria-hidden
+                        className="absolute left-1/2 top-0"
+                        style={{
+                          width: `${(smallSize * tape.length) / 100}cqw`,
+                          height: `${tape.thickness}cqw`,
+                          transform: "translate(-50%, -50%)",
+                          background: hexToRgba(tape.color, TAPE_ALPHA),
+                        }}
+                      />
+                    )}
+                  </div>
+                  {texts.map((t) => {
+                    const style: React.CSSProperties = {
+                      left: `${t.x}%`,
+                      top: `${t.y}%`,
+                      fontSize: `${t.size}cqw`,
+                      fontFamily: fontCss(t.font),
+                      fontWeight: t.weight,
+                      transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
+                      transformOrigin: "0 0",
+                      color: t.color,
+                      textShadow: textShadowCss(t),
+                    };
+                    if (editingText === t.id) {
+                      // 사진 위에서 바로 고치는 중. Enter는 줄바꿈이고, Esc나 바깥을 누르면 끝난다.
+                      // 숨은 span이 글자 크기만큼 칸을 늘려 textarea가 내용에 맞게 커진다.
+                      return (
+                        <div
+                          key={t.id}
+                          className="absolute grid outline-2 outline-pink-500"
+                          style={style}
+                        >
+                          <span
+                            aria-hidden
+                            className="invisible col-start-1 row-start-1 whitespace-pre leading-tight"
+                          >
+                            {t.text + "\n "}
+                          </span>
+                          <textarea
+                            autoFocus
+                            wrap="off"
+                            rows={1}
+                            aria-label="텍스트 직접 수정"
+                            value={t.text}
+                            maxLength={MAX_TEXT_LENGTH}
+                            onFocus={(e) => e.currentTarget.select()}
+                            onChange={(e) => updateText(t.id, { text: e.target.value })}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") e.currentTarget.blur();
+                            }}
+                            onBlur={() => setEditingText(null)}
+                            className="col-start-1 row-start-1 m-0 resize-none overflow-hidden whitespace-pre border-0 bg-transparent p-0 leading-tight outline-none"
+                            style={{
+                              font: "inherit",
+                              color: "inherit",
+                              textShadow: "inherit",
+                              width: 0, // 기본 너비가 상자를 넓히지 않도록 하고,
+                              minWidth: "100%", // 숨은 span이 정한 칸에 맞춘다.
+                            }}
+                          />
+                        </div>
+                      );
+                    }
                     return (
                       <div
                         key={t.id}
-                        className="absolute grid outline-2 outline-pink-500"
+                        onPointerDown={(e) => startTextDrag(e, t.id)}
+                        className={`absolute cursor-grab touch-none whitespace-pre leading-tight ${
+                          selectedText === t.id
+                            ? "outline-2 outline-dashed outline-pink-400"
+                            : ""
+                        }`}
                         style={style}
                       >
-                        <span
-                          aria-hidden
-                          className="invisible col-start-1 row-start-1 whitespace-pre leading-tight"
-                        >
-                          {t.text + "\n "}
-                        </span>
-                        <textarea
-                          autoFocus
-                          wrap="off"
-                          rows={1}
-                          aria-label="텍스트 직접 수정"
-                          value={t.text}
-                          maxLength={MAX_TEXT_LENGTH}
-                          onFocus={(e) => e.currentTarget.select()}
-                          onChange={(e) => updateText(t.id, { text: e.target.value })}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") e.currentTarget.blur();
-                          }}
-                          onBlur={() => setEditingText(null)}
-                          className="col-start-1 row-start-1 m-0 resize-none overflow-hidden whitespace-pre border-0 bg-transparent p-0 leading-tight outline-none"
-                          style={{
-                            font: "inherit",
-                            color: "inherit",
-                            textShadow: "inherit",
-                            width: 0, // 기본 너비가 상자를 넓히지 않도록 하고,
-                            minWidth: "100%", // 숨은 span이 정한 칸에 맞춘다.
-                          }}
-                        />
+                        {t.text || " "}
                       </div>
                     );
-                  }
-                  return (
-                    <div
-                      key={t.id}
-                      onPointerDown={(e) => startTextDrag(e, t.id)}
-                      className={`absolute cursor-grab touch-none whitespace-pre leading-tight ${
-                        selectedText === t.id
-                          ? "outline-2 outline-dashed outline-pink-400"
-                          : ""
-                      }`}
-                      style={style}
-                    >
-                      {t.text || " "}
-                    </div>
-                  );
-                })}
-              </div>
+                  })}
+                </div>
+              )}
 
               <div
                 role="tablist"
@@ -750,6 +827,88 @@ export default function DualShot() {
               >
                 초기화
               </button>
+            </div>
+          )}
+
+          {tab === "retouch" && (
+            <div className="flex flex-col gap-3 rounded-xl border p-3 text-sm">
+              <div className="flex gap-2">
+                {(["big", "small"] as Slot[]).map((sl) => (
+                  <button
+                    key={sl}
+                    onClick={() => setRetouchSlot(sl)}
+                    className={`flex-1 rounded-lg border py-1 ${
+                      retouchSlot === sl ? "border-pink-500 bg-pink-50 text-pink-600" : ""
+                    }`}
+                  >
+                    {SLOT_LABEL[sl]}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {RETOUCH_TOOLS.map((t) => (
+                  <button
+                    key={t.id}
+                    aria-pressed={tool === t.id}
+                    onClick={() => setTool(t.id)}
+                    className={`rounded-full border px-3 py-1 ${
+                      tool === t.id ? "border-pink-500 bg-pink-50 text-pink-600" : ""
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-500">
+                {RETOUCH_TOOLS.find((t) => t.id === tool)!.hint}
+              </p>
+              <label className="flex items-center gap-3">
+                <span className="w-16">브러시 크기</span>
+                <input
+                  type="range"
+                  min={2}
+                  max={20}
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                  className="flex-1"
+                />
+              </label>
+              {tool !== "heal" && (
+                <label className="flex items-center gap-3">
+                  <span className="w-16">강도</span>
+                  <input
+                    type="range"
+                    min={10}
+                    max={100}
+                    value={retouchStrength}
+                    onChange={(e) => setRetouchStrength(Number(e.target.value))}
+                    className="flex-1"
+                  />
+                </label>
+              )}
+              {tool === "color" && (
+                <label className="flex items-center gap-3">
+                  <span className="w-16">색</span>
+                  <input
+                    type="color"
+                    value={retouchColor}
+                    onChange={(e) => setRetouchColor(e.target.value)}
+                    className="h-6 w-10 cursor-pointer border-0 bg-transparent p-0"
+                  />
+                </label>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={retouchUndo}
+                  disabled={!works[retouchSlot]?.undo.length}
+                  className="flex-1 rounded-lg border py-2 disabled:opacity-40"
+                >
+                  되돌리기 ({works[retouchSlot]?.undo.length ?? 0})
+                </button>
+                <button onClick={retouchReset} className="flex-1 rounded-lg border py-2">
+                  처음으로
+                </button>
+              </div>
             </div>
           )}
 
