@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { TEXTURES, TextureLayers, type TextureId } from "./textures";
 import RetouchView from "./RetouchView";
 import { AdjustIcon, FaceIcon, LayoutIcon, SaveIcon, TextIcon } from "./icons";
-import { createWork, getCtx, type Tool, type Work } from "@/lib/retouch";
+import { MAX_UNDO, createWork, getCtx, previewResize, type Tool, type Work } from "@/lib/retouch";
 import {
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
@@ -96,8 +96,7 @@ const RETOUCH_TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: "heal", label: "잡티 지우기", hint: "지우고 싶은 점이나 여드름을 콕 눌러 주세요. 브러시를 점보다 조금 크게 맞추면 깔끔해요." },
   { id: "brighten", label: "화사하게", hint: "밝게 하고 싶은 곳을 문질러 주세요. 누르고 있으면 점점 밝아져요." },
   { id: "color", label: "볼터치·립 색", hint: "볼이나 입술을 문질러 색을 입혀요. 색은 아래에서 고르세요." },
-  { id: "enlarge", label: "키우기", hint: "눈·코 등을 누르고 있거나 살짝 문질러 크게 해요. 누르고 있을수록 커져요." },
-  { id: "shrink", label: "줄이기", hint: "턱·코 등을 누르고 있거나 문질러 작게 해요. 누르고 있을수록 작아져요." },
+  { id: "resize", label: "크기 조절", hint: "눈·코·턱 등을 한 번 눌러 위치를 정한 뒤, 아래 슬라이더로 키우거나 줄이세요. 위치는 끌어서 옮길 수 있어요." },
 ];
 
 const EXPORT_SIZE_LABEL = `${EXPORT_WIDTH}×${EXPORT_HEIGHT}`;
@@ -123,6 +122,9 @@ export default function DualShot() {
   const [retouchStrength, setRetouchStrength] = useState(50);
   const [retouchColor, setRetouchColor] = useState("#f472b6");
   const [, setRetouchTick] = useState(0);
+  // 크기 조절: 찍어 둔 위치와 그 시점의 사진(base). 슬라이더로 양을 정하고 "적용"을 누르면 확정된다.
+  const [resizeSession, setResizeSession] = useState<{ x: number; y: number; base: ImageData } | null>(null);
+  const [resizeAmount, setResizeAmount] = useState(0); // -100(줄이기) ~ 100(키우기)
   const [adjust, setAdjust] = useState<Record<Slot, Adjust>>({
     big: NO_ADJUST,
     small: NO_ADJUST,
@@ -307,6 +309,69 @@ export default function DualShot() {
     };
   }, [tab, retouchSlot, photos, works]);
 
+  // 진행 중인 크기 조절을 확정(apply)하거나 취소한다.
+  function finishResize(apply: boolean) {
+    const work = works[retouchSlot];
+    if (resizeSession && work) {
+      if (apply && resizeAmount !== 0) {
+        work.undo.push(resizeSession.base);
+        if (work.undo.length > MAX_UNDO) work.undo.shift();
+        commitRetouch(retouchSlot, work);
+      } else {
+        getCtx(work.canvas).putImageData(resizeSession.base, 0, 0);
+      }
+    }
+    setResizeSession(null);
+    setResizeAmount(0);
+  }
+
+  // 칠하기 시작 직전의 사진을 되돌리기용으로 남긴다.
+  function startRetouchStroke() {
+    const work = works[retouchSlot];
+    if (!work) return;
+    work.undo.push(getCtx(work.canvas).getImageData(0, 0, work.canvas.width, work.canvas.height));
+    if (work.undo.length > MAX_UNDO) work.undo.shift();
+  }
+
+  function placeResize(x: number, y: number) {
+    const work = works[retouchSlot];
+    if (!work) return;
+    finishResize(true); // 이전 위치의 조절은 그대로 확정하고 새 위치로 넘어간다
+    const base = getCtx(work.canvas).getImageData(0, 0, work.canvas.width, work.canvas.height);
+    setResizeSession({ x, y, base });
+    setResizeAmount(0);
+  }
+
+  function goTab(next: TabId) {
+    finishResize(true);
+    setTab(next);
+  }
+
+  function chooseTool(next: Tool) {
+    finishResize(true);
+    setTool(next);
+  }
+
+  function chooseRetouchSlot(next: Slot) {
+    finishResize(true);
+    setRetouchSlot(next);
+  }
+
+  // 슬라이더·범위 크기가 바뀔 때마다 보정 전 사진에서 다시 그려 미리 보여 준다.
+  useEffect(() => {
+    const work = works[retouchSlot];
+    if (!resizeSession || !work) return;
+    getCtx(work.canvas).putImageData(resizeSession.base, 0, 0);
+    previewResize(
+      work.canvas,
+      resizeSession.base,
+      resizeSession.x,
+      resizeSession.y,
+      (brushSize / 100) * work.canvas.width,
+      resizeAmount / 100,
+    );
+  }, [resizeSession, resizeAmount, brushSize, works, retouchSlot]);
+
   function commitRetouch(slot: Slot, work: Work) {
     const url = work.canvas.toDataURL("image/jpeg", 0.92);
     setPhotos((p) => ({ ...p, [slot]: url }));
@@ -314,6 +379,10 @@ export default function DualShot() {
   }
 
   function retouchUndo() {
+    if (resizeSession) {
+      finishResize(false); // 진행 중인 크기 조절이 있으면 그것부터 취소한다
+      return;
+    }
     const work = works[retouchSlot];
     const snapshot = work?.undo.pop();
     if (!work || !snapshot) return;
@@ -324,6 +393,8 @@ export default function DualShot() {
   async function retouchReset() {
     const src = originals[retouchSlot];
     if (!src) return;
+    setResizeSession(null);
+    setResizeAmount(0);
     const work = await createWork(src);
     setWorks((ws) => ({ ...ws, [retouchSlot]: work }));
     setPhotos((p) => ({ ...p, [retouchSlot]: src }));
@@ -364,7 +435,7 @@ export default function DualShot() {
     const item = texts.find((x) => x.id === id);
     if (!stage || !item) return;
     setSelectedText(id);
-    setTab("text");
+    goTab("text");
     e.currentTarget.setPointerCapture(e.pointerId);
     const rect = stage.getBoundingClientRect();
     const startX = e.clientX;
@@ -501,6 +572,9 @@ export default function DualShot() {
                   sizePct={brushSize}
                   strength={retouchStrength / 100}
                   color={retouchColor}
+                  marker={resizeSession ? { x: resizeSession.x, y: resizeSession.y } : null}
+                  onPlace={placeResize}
+                  onStrokeStart={startRetouchStroke}
                   onStrokeEnd={(w) => commitRetouch(retouchSlot, w)}
                 />
               ) : (
@@ -639,7 +713,7 @@ export default function DualShot() {
                     aria-selected={tab === t.id}
                     aria-label={t.label}
                     title={t.label}
-                    onClick={() => setTab(t.id)}
+                    onClick={() => goTab(t.id)}
                     className={`flex h-9 w-9 items-center justify-center rounded-lg ${
                       tab === t.id
                         ? "bg-white text-pink-600 shadow-sm"
@@ -836,7 +910,7 @@ export default function DualShot() {
                 {(["big", "small"] as Slot[]).map((sl) => (
                   <button
                     key={sl}
-                    onClick={() => setRetouchSlot(sl)}
+                    onClick={() => chooseRetouchSlot(sl)}
                     className={`flex-1 rounded-lg border py-1 ${
                       retouchSlot === sl ? "border-pink-500 bg-pink-50 text-pink-600" : ""
                     }`}
@@ -850,7 +924,7 @@ export default function DualShot() {
                   <button
                     key={t.id}
                     aria-pressed={tool === t.id}
-                    onClick={() => setTool(t.id)}
+                    onClick={() => chooseTool(t.id)}
                     className={`rounded-full border px-3 py-1 ${
                       tool === t.id ? "border-pink-500 bg-pink-50 text-pink-600" : ""
                     }`}
@@ -863,7 +937,7 @@ export default function DualShot() {
                 {RETOUCH_TOOLS.find((t) => t.id === tool)!.hint}
               </p>
               <label className="flex items-center gap-3">
-                <span className="w-16">브러시 크기</span>
+                <span className="w-16">{tool === "resize" ? "범위 크기" : "브러시 크기"}</span>
                 <input
                   type="range"
                   min={2}
@@ -873,7 +947,44 @@ export default function DualShot() {
                   className="flex-1"
                 />
               </label>
-              {tool !== "heal" && (
+              {tool === "resize" && (
+                <div className="flex flex-col gap-2 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-900">
+                  <label className="flex items-center gap-3">
+                    <span className="w-16">크기</span>
+                    <input
+                      type="range"
+                      min={-100}
+                      max={100}
+                      value={resizeAmount}
+                      disabled={!resizeSession}
+                      onChange={(e) => setResizeAmount(Number(e.target.value))}
+                      className="flex-1"
+                    />
+                  </label>
+                  <div className="flex justify-between text-xs text-zinc-500">
+                    <span>줄이기</span>
+                    <span>{resizeSession ? `${resizeAmount > 0 ? "+" : ""}${resizeAmount}` : "위치를 먼저 눌러 주세요"}</span>
+                    <span>키우기</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => finishResize(true)}
+                      disabled={!resizeSession}
+                      className="flex-1 rounded-lg border border-pink-500 py-1 text-pink-600 disabled:opacity-40"
+                    >
+                      적용
+                    </button>
+                    <button
+                      onClick={() => finishResize(false)}
+                      disabled={!resizeSession}
+                      className="flex-1 rounded-lg border py-1 disabled:opacity-40"
+                    >
+                      취소
+                    </button>
+                  </div>
+                </div>
+              )}
+              {tool !== "heal" && tool !== "resize" && (
                 <label className="flex items-center gap-3">
                   <span className="w-16">강도</span>
                   <input
