@@ -147,6 +147,7 @@ function Inner() {
 
   return (
     <div className="flex min-h-screen flex-col" style={{ background: "#F3F1EC", color: INK }}>
+      <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col">
       <header className="flex items-end justify-between gap-3 px-3 pb-3 pt-4">
         <div className="min-w-0">
           <Link href="/" className="text-xs underline-offset-2 hover:underline" style={{ color: "#6b675f" }}>
@@ -181,7 +182,11 @@ function Inner() {
         </div>
       ) : (
         <ul
-          className={`grid ${editing ? "grid-cols-3" : "grid-cols-2"} items-start`}
+          className={`grid ${
+            editing
+              ? "grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+              : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+          } items-start`}
           style={{ gap: 3, paddingBottom: editing ? 150 : 24 }}
         >
           {!editing && profile && (
@@ -255,6 +260,8 @@ function Inner() {
           })}
         </ul>
       )}
+
+      </div>
 
       {editing && (
         <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col gap-2 border-t p-3 text-sm" style={{ background: "#F3F1EC", borderColor: INK }}>
