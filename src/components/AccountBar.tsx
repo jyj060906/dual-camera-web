@@ -19,6 +19,9 @@ export default function AccountBar() {
   }
   return (
     <nav className="flex items-center gap-2">
+      <Link href="/feed" className="rounded-full border px-3 py-1 text-sm text-zinc-600">
+        내 피드
+      </Link>
       <Link href="/friends" aria-label="친구" title="친구" className="rounded-full p-2 text-zinc-600">
         <UsersIcon className="h-5 w-5" />
       </Link>

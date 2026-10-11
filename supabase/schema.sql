@@ -257,3 +257,94 @@ drop policy if exists "delete own avatar" on storage.objects;
 create policy "delete own avatar"
   on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ───────────────────────── 게시물(내 피드) ─────────────────────────
+-- 합성이 끝난 듀얼샷 한 장(두 사진 + 프레임이 이미 합쳐진 이미지)을 게시물 하나로 저장한다.
+-- 아직 정하지 않은 것(다른 사람이 보는 범위, 순서 적용 화면, 수정·삭제 규칙)은 규칙을 만들지 않았다.
+--  · 읽기: 본인 것만. 친구·팔로워가 보는 규칙은 공개 범위 우선순위가 정해진 뒤에 추가한다.
+--  · 삭제: 정책 없음(삭제 후 기록 보관 방식이 정해지지 않았다).
+--  · 수정: 순서(sort_order)만 가능. 그 밖의 항목은 수정 허용 범위가 정해질 때까지 막아 둔다.
+create table if not exists public.posts (
+  id uuid primary key default gen_random_uuid(),
+  author uuid not null references public.profiles (id) on delete cascade,
+  image_path text not null check (char_length(image_path) between 1 and 300),
+  caption text not null default '' check (char_length(caption) <= 500),
+  visibility text not null check (visibility in ('public', 'friends', 'private')),
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists posts_author_order_idx on public.posts (author, sort_order, created_at desc);
+
+alter table public.posts enable row level security;
+
+drop policy if exists "read own posts" on public.posts;
+create policy "read own posts" on public.posts for select to authenticated
+  using (author = auth.uid());
+
+drop policy if exists "create own posts" on public.posts;
+create policy "create own posts" on public.posts for insert to authenticated
+  with check (author = auth.uid() and image_path like auth.uid()::text || '/%');
+
+drop policy if exists "reorder own posts" on public.posts;
+create policy "reorder own posts" on public.posts for update to authenticated
+  using (author = auth.uid()) with check (author = auth.uid());
+
+create or replace function public.posts_guard() returns trigger
+language plpgsql as $$
+begin
+  if new.id <> old.id or new.author <> old.author or new.image_path <> old.image_path
+     or new.caption <> old.caption or new.visibility <> old.visibility
+     or new.created_at <> old.created_at then
+    raise exception 'only sort_order can be changed' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+drop trigger if exists posts_guard on public.posts;
+create trigger posts_guard before update on public.posts
+  for each row execute function public.posts_guard();
+
+-- 새 게시물은 맨 앞(가장 작은 순서보다 앞)에 놓는다. 기본 정렬은 확정 전이라 임시 값이다.
+create or replace function public.posts_default_order() returns trigger
+language plpgsql as $$
+begin
+  select coalesce(min(sort_order), 0) - 1 into new.sort_order from public.posts where author = new.author;
+  return new;
+end $$;
+drop trigger if exists posts_default_order on public.posts;
+create trigger posts_default_order before insert on public.posts
+  for each row execute function public.posts_default_order();
+
+-- 내 게시물 순서를 한 번에 바꾼다. ids의 앞쪽이 먼저 보인다. 내 게시물 전체를 정확히 한 번씩 담아야 한다.
+create or replace function public.reorder_my_posts(ids uuid[]) returns void
+language plpgsql security invoker as $$
+declare mine integer;
+begin
+  select count(*) into mine from public.posts where author = auth.uid();
+  if mine <> coalesce(array_length(ids, 1), 0)
+     or (select count(distinct x) from unnest(ids) x) <> mine
+     or exists (select 1 from unnest(ids) x where x not in (select id from public.posts where author = auth.uid())) then
+    raise exception 'ids must list each of my posts exactly once' using errcode = '22023';
+  end if;
+  update public.posts p set sort_order = o.ord - 1
+    from unnest(ids) with ordinality as o(id, ord)
+    where p.id = o.id and p.author = auth.uid();
+end $$;
+grant execute on function public.reorder_my_posts(uuid[]) to authenticated;
+
+-- 게시물 이미지: 비공개 저장소. 본인 폴더(posts/<내 id>/...)만 올리고 읽을 수 있다(서명된 주소로 보여 준다).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('posts', 'posts', false, 5242880, array['image/jpeg'])
+on conflict (id) do update
+  set public = excluded.public,
+      file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "read own post images" on storage.objects;
+create policy "read own post images"
+  on storage.objects for select to authenticated
+  using (bucket_id = 'posts' and (storage.foldername(name))[1] = auth.uid()::text);
+
+drop policy if exists "upload own post images" on storage.objects;
+create policy "upload own post images"
+  on storage.objects for insert to authenticated
+  with check (bucket_id = 'posts' and (storage.foldername(name))[1] = auth.uid()::text);

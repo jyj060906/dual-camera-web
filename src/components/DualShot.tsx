@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { TEXTURES, TextureLayers, type TextureId } from "./textures";
 import { AdjustIcon, LayoutIcon, SaveIcon, TextIcon } from "./icons";
+import PublishPanel from "./PublishPanel";
 import {
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
@@ -267,28 +268,31 @@ export default function DualShot() {
     setTexts((t) => t.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
 
-  async function saveEdited() {
+  // 지금 화면의 편집 결과를 이미지 파일(Blob)로 만든다.
+  async function renderBlob(type: "image/jpeg" | "image/png"): Promise<Blob> {
     const stage = stageRef.current;
-    if (!stage || !photos.big || !photos.small) return;
+    if (!stage || !photos.big || !photos.small) throw new Error("사진 두 장이 필요해요.");
+    const canvas = await renderDualShot({
+      photos: { big: photos.big, small: photos.small },
+      adjust,
+      filters,
+      textures,
+      frame,
+      border,
+      smallSize,
+      smallPos,
+      texts,
+      stageWidthPx: stage.getBoundingClientRect().width,
+    });
+    return canvasToBlob(canvas, type);
+  }
+
+  async function saveEdited() {
+    if (!photos.big || !photos.small) return;
     setSaving(true);
     setSaveError(null);
     try {
-      const canvas = await renderDualShot({
-        photos: { big: photos.big, small: photos.small },
-        adjust,
-        filters,
-        textures,
-        frame,
-        border,
-        smallSize,
-        smallPos,
-        texts,
-        stageWidthPx: stage.getBoundingClientRect().width,
-      });
-      const blob = await canvasToBlob(
-        canvas,
-        format === "png" ? "image/png" : "image/jpeg",
-      );
+      const blob = await renderBlob(format === "png" ? "image/png" : "image/jpeg");
       const url = URL.createObjectURL(blob);
       downloadUrl(url, `${timestampName()}.${format}`);
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
@@ -1016,6 +1020,7 @@ export default function DualShot() {
                 원본 사진 2장 저장
               </button>
               {saveError && <p className="text-red-500">{saveError}</p>}
+              <PublishPanel makeImage={() => renderBlob("image/jpeg")} />
             </div>
           )}
         </div>
