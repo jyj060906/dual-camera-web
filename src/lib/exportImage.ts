@@ -4,10 +4,9 @@ import {
   FONT_FALLBACK_VAR,
   FONTS,
   FRAMES,
-  TAPE_ALPHA,
   filterOf,
   hexToRgba,
-  type Tape,
+  type Border,
   type Adjust,
   type FilterId,
   type Frame,
@@ -25,7 +24,7 @@ export type ExportInput = {
   filters: Record<Slot, FilterId>;
   textures: Record<Slot, TextureId[]>;
   frame: Frame;
-  tape: Tape;
+  border: Border;
   smallSize: number; // 큰 사진 너비 대비 %
   smallPos: { x: number; y: number }; // %
   texts: TextItem[];
@@ -240,21 +239,21 @@ function traceShape(
 }
 
 // 프레임 안쪽에 사진이 들어가는 영역.
-function innerBox(frame: Frame, box: Box, k: number): Box {
-  if (frame === "rounded" || frame === "square" || frame === "circle") {
-    const b = 2 * k;
-    return { x: box.x + b, y: box.y + b, w: box.w - 2 * b, h: box.h - 2 * b };
-  }
+// border가 켜져 있으면 그 두께(px)만큼, 아니면 프레임 기본 여백만큼 안쪽으로 들어간다.
+function frameInset(frame: Frame, k: number, borderPx: number | null): number {
+  if (borderPx !== null) return borderPx;
+  return frame === "heart" || frame === "star" ? 0 : 2 * k;
+}
+
+function innerBox(frame: Frame, box: Box, k: number, borderPx: number | null): Box {
   if (frame === "polaroid") {
-    const pad = 0.06 * box.w;
-    return {
-      x: box.x + pad,
-      y: box.y + pad,
-      w: box.w - 2 * pad,
-      h: box.h - pad - 0.22 * box.w,
-    };
+    // 폴라로이드는 아래쪽 띠가 위·옆의 22/6배
+    const pad = borderPx ?? 0.06 * box.w;
+    const bottom = borderPx !== null ? borderPx * (22 / 6) : 0.22 * box.w;
+    return { x: box.x + pad, y: box.y + pad, w: box.w - 2 * pad, h: box.h - pad - bottom };
   }
-  return box;
+  const b = frameInset(frame, k, borderPx);
+  return { x: box.x + b, y: box.y + b, w: box.w - 2 * b, h: box.h - 2 * b };
 }
 
 function fontFamily(item: TextItem): string {
@@ -309,37 +308,25 @@ export async function renderDualShot(input: ExportInput): Promise<HTMLCanvasElem
   ctx.shadowColor = "rgba(0,0,0,0.15)";
   ctx.shadowBlur = 8 * k;
   ctx.shadowOffsetY = 4 * k;
-  ctx.fillStyle = "white";
+  // 바깥 모양을 테두리 색(기본은 흰색)으로 채우고, 그 안쪽에 사진을 넣는다.
+  const borderPx = input.border.on ? (input.border.thickness / 100) * W : null;
+  ctx.fillStyle = input.border.on ? input.border.color : "white";
   traceShape(ctx, input.frame, box, k, 0);
   ctx.fill();
   ctx.restore();
 
-  const inner = innerBox(input.frame, box, k);
+  const inner = innerBox(input.frame, box, k, borderPx);
   ctx.save();
   if (input.frame === "polaroid") {
     ctx.beginPath();
     ctx.rect(inner.x, inner.y, inner.w, inner.h);
   } else {
-    const inset = input.frame === "heart" || input.frame === "star" ? 0 : 2 * k;
-    traceShape(ctx, input.frame, box, k, inset);
+    traceShape(ctx, input.frame, box, k, frameInset(input.frame, k, borderPx));
   }
   ctx.clip();
   drawPhoto(ctx, smallImg, inner, filterOf(input.adjust.small, input.filters.small), k);
   drawTextures(ctx, input.textures.small, inner, k);
   ctx.restore();
-
-  // 띠지: 작은 사진 위쪽 가장자리의 가운데에 걸친다.
-  if (input.tape.on) {
-    const tw = (input.tape.length / 100) * box.w;
-    const th = (input.tape.thickness / 100) * W;
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.15)";
-    ctx.shadowBlur = 8 * k;
-    ctx.shadowOffsetY = 4 * k;
-    ctx.fillStyle = hexToRgba(input.tape.color, TAPE_ALPHA);
-    ctx.fillRect(box.x + box.w / 2 - tw / 2, box.y - th / 2, tw, th);
-    ctx.restore();
-  }
 
   // 텍스트
   for (const t of input.texts) {
