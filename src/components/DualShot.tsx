@@ -34,6 +34,30 @@ type TextItem = {
   scaleY: number; // 세로 길이 %
 };
 
+const FAVORITES_KEY = "dual-camera.favoriteColors";
+const MAX_FAVORITES = 20;
+
+// 즐겨찾기 색상은 이 브라우저에만 저장한다(로그인 전이라 서버에 두지 않는다).
+function loadFavorites(): string[] {
+  try {
+    const raw = window.localStorage.getItem(FAVORITES_KEY);
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list)
+      ? list.filter((c): c is string => typeof c === "string").slice(0, MAX_FAVORITES)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFavorites(list: string[]) {
+  try {
+    window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(list));
+  } catch {
+    // 저장이 막힌 환경에서는 이번 접속 동안만 유지된다.
+  }
+}
+
 const TEXT_COLORS = ["#ffffff", "#000000", "#ec4899", "#facc15", "#38bdf8"];
 
 type Adjust = { brightness: number; contrast: number; saturate: number };
@@ -102,6 +126,9 @@ export default function DualShot() {
   const [texts, setTexts] = useState<TextItem[]>([]);
   const [selectedText, setSelectedText] = useState<number | null>(null);
   const nextTextId = useRef(1);
+  const [favorites, setFavorites] = useState<string[]>(() =>
+    typeof window === "undefined" ? [] : loadFavorites(),
+  );
   const [editSlot, setEditSlot] = useState<Slot>("big");
   const [smallSize, setSmallSize] = useState(32); // 큰 사진 너비 대비 %
   const [smallPos, setSmallPos] = useState({ x: 6, y: 6 }); // 왼쪽·위 기준 %
@@ -204,6 +231,22 @@ export default function DualShot() {
 
   function updateText(id: number, patch: Partial<TextItem>) {
     setTexts((t) => t.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }
+
+  function addFavorite(color: string) {
+    setFavorites((f) => {
+      const next = [color, ...f.filter((c) => c !== color)].slice(0, MAX_FAVORITES);
+      saveFavorites(next);
+      return next;
+    });
+  }
+
+  function removeFavorite(color: string) {
+    setFavorites((f) => {
+      const next = f.filter((c) => c !== color);
+      saveFavorites(next);
+      return next;
+    });
   }
 
   function removeText(id: number) {
@@ -576,7 +619,7 @@ export default function DualShot() {
                     />
                   </label>
                 ))}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="w-10">색</span>
                   {TEXT_COLORS.map((c) => (
                     <button
@@ -591,6 +634,58 @@ export default function DualShot() {
                       style={{ background: c }}
                     />
                   ))}
+                  <label
+                    className="relative flex h-7 cursor-pointer items-center gap-1 rounded-full border px-2 text-xs"
+                    title="색상 직접 고르기"
+                  >
+                    <input
+                      type="color"
+                      value={texts.find((t) => t.id === selectedText)!.color}
+                      onChange={(e) =>
+                        updateText(selectedText!, { color: e.target.value })
+                      }
+                      className="h-5 w-5 cursor-pointer border-0 bg-transparent p-0"
+                    />
+                    직접 선택
+                  </label>
+                  <button
+                    onClick={() =>
+                      addFavorite(texts.find((t) => t.id === selectedText)!.color)
+                    }
+                    className="h-7 rounded-full border border-pink-500 px-2 text-xs text-pink-600"
+                  >
+                    ★ 보관함에 추가
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-zinc-500">
+                    색상 보관함 {favorites.length > 0 ? "(누르면 적용)" : ""}
+                  </span>
+                  {favorites.length === 0 ? (
+                    <p className="text-xs text-zinc-400">
+                      자주 쓰는 색을 ★로 추가해 두세요.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {favorites.map((c) => (
+                        <span key={c} className="relative">
+                          <button
+                            onClick={() => updateText(selectedText!, { color: c })}
+                            aria-label={`보관함 색상 ${c}`}
+                            className="h-7 w-7 rounded-full border"
+                            style={{ background: c }}
+                          />
+                          <button
+                            onClick={() => removeFavorite(c)}
+                            aria-label={`보관함에서 ${c} 삭제`}
+                            className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-700 text-[10px] leading-none text-white"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => removeText(selectedText!)}
