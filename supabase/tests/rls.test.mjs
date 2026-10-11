@@ -66,7 +66,7 @@ const carol = await signup("carol@gmail.com", { full_name: "Carol K", picture: "
 const mallory = await signup("mallory@id.dual-camera.example", { username: "victim" });
 const prof = async (id) => (await admin.query("select * from profiles where id=$1", [id])).rows[0];
 ok("아이디 가입: 이메일에서 아이디를 꺼내 프로필 생성", (await prof(alice)).username === "alice" && (await prof(alice)).nickname === "alice");
-ok("구글/카카오 가입: 아이디 비어 있고 이름·사진 가져옴", (await prof(carol)).username === null && (await prof(carol)).nickname === "Carol K" && (await prof(carol)).avatar_url === "https://example.com/c.jpg");
+ok("구글 가입: 아이디 비어 있고 이름·사진 가져옴", (await prof(carol)).username === null && (await prof(carol)).nickname === "Carol K" && (await prof(carol)).avatar_url === "https://example.com/c.jpg");
 ok("클라이언트가 보낸 username(메타데이터)은 무시", (await prof(mallory)).username === "mallory");
 let r = await admin.query("insert into auth.users (email) values ('ab@id.dual-camera.example')").catch((e) => ({ error: e.code }));
 ok("너무 짧은 아이디는 가입 거부(check)", r.error === "23514", r.error);
