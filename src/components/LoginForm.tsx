@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 import {
@@ -25,6 +25,11 @@ export default function LoginForm() {
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 이미 로그인된 상태로 들어오면 바로 사진 화면으로 보낸다.
+  useEffect(() => {
+    if (status === "in") router.replace("/");
+  }, [status, router]);
 
   if (!configured) return <SetupNotice />;
   if (status === "in") {

@@ -1,5 +1,6 @@
 import AccountBar from "@/components/AccountBar";
 import DualShot from "@/components/DualShot";
+import HomeGate from "@/components/HomeGate";
 
 export default function Home() {
   return (
@@ -8,7 +9,9 @@ export default function Home() {
         <h1 className="text-xl font-semibold">듀얼 카메라</h1>
         <AccountBar />
       </header>
-      <DualShot />
+      <HomeGate>
+        <DualShot />
+      </HomeGate>
     </main>
   );
 }
