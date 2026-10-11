@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { TEXTURES, TextureLayers, type TextureId } from "./textures";
+import { AdjustIcon, LayoutIcon, SaveIcon, TextIcon } from "./icons";
 import {
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
@@ -73,11 +74,12 @@ function shapeStyle(frame: Frame): React.CSSProperties {
 
 const MAX_TEXT_LENGTH = 120;
 
+// 탭은 아이콘으로 보여 주고, 이름은 aria-label과 길게 눌렀을 때의 툴팁으로 남긴다.
 const TABS = [
-  { id: "layout", label: "배치" },
-  { id: "adjust", label: "보정" },
-  { id: "text", label: "텍스트" },
-  { id: "save", label: "저장" },
+  { id: "layout", label: "배치", Icon: LayoutIcon },
+  { id: "adjust", label: "보정", Icon: AdjustIcon },
+  { id: "text", label: "텍스트", Icon: TextIcon },
+  { id: "save", label: "저장", Icon: SaveIcon },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -428,14 +430,16 @@ export default function DualShot() {
                   key={t.id}
                   role="tab"
                   aria-selected={tab === t.id}
+                  aria-label={t.label}
+                  title={t.label}
                   onClick={() => setTab(t.id)}
-                  className={`rounded-lg py-2 ${
+                  className={`flex items-center justify-center rounded-lg py-2 ${
                     tab === t.id
                       ? "bg-white font-medium text-pink-600 shadow-sm dark:bg-zinc-700"
                       : "text-zinc-500"
                   }`}
                 >
-                  {t.label}
+                  <t.Icon className="h-5 w-5" />
                 </button>
               ))}
             </div>
