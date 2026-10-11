@@ -4,6 +4,7 @@ import {
   FONTS,
   FRAMES,
   filterOf,
+  hexToRgba,
   type Adjust,
   type FilterId,
   type Frame,
@@ -328,9 +329,11 @@ export async function renderDualShot(input: ExportInput): Promise<HTMLCanvasElem
     ctx.fillStyle = t.color;
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
-    ctx.shadowColor = "rgba(0,0,0,0.45)";
-    ctx.shadowBlur = 4 * k;
-    ctx.shadowOffsetY = k;
+    if (t.shadowAlpha > 0) {
+      ctx.shadowColor = hexToRgba(t.shadowColor, t.shadowAlpha / 100);
+      ctx.shadowBlur = t.shadowBlur * k;
+      ctx.shadowOffsetY = t.shadowOffset * k;
+    }
     ctx.translate((t.x / 100) * W, (t.y / 100) * H);
     ctx.scale(t.scaleX / 100, t.scaleY / 100);
     ctx.fillText(t.text, 0, px * 0.625); // line-height 1.25의 가운데

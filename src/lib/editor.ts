@@ -26,7 +26,21 @@ export type TextItem = {
   scaleX: number; // 가로 폭 %
   scaleY: number; // 세로 길이 %
   font: FontId;
+  shadowColor: string;
+  shadowAlpha: number; // 그림자 진하기 0~100 (0이면 그림자 없음)
+  shadowBlur: number; // 그림자 흐림 px
+  shadowOffset: number; // 그림자 아래쪽 거리 px
 };
+
+export function hexToRgba(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+export const textShadowCss = (t: TextItem) =>
+  t.shadowAlpha > 0
+    ? `0 ${t.shadowOffset}px ${t.shadowBlur}px ${hexToRgba(t.shadowColor, t.shadowAlpha / 100)}`
+    : "none";
 
 export type Adjust = { brightness: number; contrast: number; saturate: number };
 export const NO_ADJUST: Adjust = { brightness: 100, contrast: 100, saturate: 100 };

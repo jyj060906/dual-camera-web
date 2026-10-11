@@ -18,6 +18,7 @@ import {
   STAR_CLIP,
   filterOf,
   fontCss,
+  textShadowCss,
   type Adjust,
   type FilterId,
   type Frame,
@@ -197,6 +198,10 @@ export default function DualShot() {
         scaleX: 100,
         scaleY: 100,
         font: "default",
+        shadowColor: "#000000",
+        shadowAlpha: 45,
+        shadowBlur: 4,
+        shadowOffset: 1,
       },
     ]);
     setSelectedText(id);
@@ -444,7 +449,7 @@ export default function DualShot() {
                   transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
                   transformOrigin: "0 0",
                   color: t.color,
-                  textShadow: "0 1px 4px rgba(0,0,0,0.45)",
+                  textShadow: textShadowCss(t),
                 }}
               >
                 {t.text || " "}
@@ -715,6 +720,43 @@ export default function DualShot() {
                     </div>
                   )}
                 </div>
+                {(
+                  [
+                    ["shadowAlpha", "그림자", 0, 100, 5],
+                    ["shadowBlur", "흐림", 0, 20, 1],
+                    ["shadowOffset", "거리", 0, 20, 1],
+                  ] as [keyof TextItem, string, number, number, number][]
+                ).map(([key, label, min, max, step]) => (
+                  <label key={key} className="flex items-center gap-3">
+                    <span className="w-16">{label}</span>
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={
+                        texts.find((t) => t.id === selectedText)![key] as number
+                      }
+                      onChange={(e) =>
+                        updateText(selectedText!, {
+                          [key]: Number(e.target.value),
+                        })
+                      }
+                      className="flex-1"
+                    />
+                  </label>
+                ))}
+                <label className="flex items-center gap-3">
+                  <span className="w-16">그림자 색</span>
+                  <input
+                    type="color"
+                    value={texts.find((t) => t.id === selectedText)!.shadowColor}
+                    onChange={(e) =>
+                      updateText(selectedText!, { shadowColor: e.target.value })
+                    }
+                    className="h-6 w-10 cursor-pointer border-0 bg-transparent p-0"
+                  />
+                </label>
                 <button
                   onClick={() => removeText(selectedText!)}
                   className="self-end text-zinc-500 underline"
