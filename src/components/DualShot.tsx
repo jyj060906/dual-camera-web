@@ -14,20 +14,18 @@ import {
 import {
   FILTERS,
   FONTS,
-  DEFAULT_TAPE,
+  DEFAULT_BORDER,
   FRAMES,
   NO_ADJUST,
-  TAPE_ALPHA,
-  hexToRgba,
   STAR_CLIP,
   filterOf,
   fontCss,
   textShadowCss,
   type Adjust,
+  type Border,
   type FilterId,
   type Frame,
   type Slot,
-  type Tape,
   type TextItem,
 } from "@/lib/editor";
 
@@ -59,7 +57,26 @@ function saveFavorites(list: string[]) {
 
 const TEXT_COLORS = ["#ffffff", "#000000", "#ec4899", "#facc15", "#38bdf8"];
 
-function shapeStyle(frame: Frame): React.CSSProperties {
+// 작은 사진 프레임의 바깥 모양. border가 켜져 있으면 테두리 색 바탕에 두께만큼 안쪽으로 들어간다.
+function shapeStyle(frame: Frame, border: Border): React.CSSProperties {
+  if (border.on) {
+    const t = border.thickness;
+    const base = { background: border.color, padding: `${t}cqw` };
+    switch (frame) {
+      case "rounded":
+        return { ...base, borderRadius: "0.75rem" };
+      case "circle":
+        return { ...base, borderRadius: "50%" };
+      case "heart":
+        return { ...base, clipPath: "url(#dual-heart)" };
+      case "star":
+        return { ...base, clipPath: STAR_CLIP };
+      case "polaroid":
+        return { background: border.color, padding: `${t}cqw ${t}cqw ${(t * 22) / 6}cqw` };
+      default:
+        return base;
+    }
+  }
   switch (frame) {
     case "rounded":
       return { borderRadius: "0.75rem", border: "2px solid white" };
@@ -73,6 +90,23 @@ function shapeStyle(frame: Frame): React.CSSProperties {
       return { clipPath: STAR_CLIP };
     case "polaroid":
       return { background: "white", padding: "6% 6% 22%" };
+  }
+}
+
+// 테두리 안쪽(사진이 들어가는 칸)의 모양. 바깥과 같은 모양으로 잘라야 테두리가 둘러싼 것처럼 보인다.
+function innerShapeStyle(frame: Frame, border: Border): React.CSSProperties {
+  if (!border.on) return {};
+  switch (frame) {
+    case "rounded":
+      return { borderRadius: `max(0px, calc(0.75rem - ${border.thickness}cqw))` };
+    case "circle":
+      return { borderRadius: "50%" };
+    case "heart":
+      return { clipPath: "url(#dual-heart)" };
+    case "star":
+      return { clipPath: STAR_CLIP };
+    default:
+      return {};
   }
 }
 
@@ -98,7 +132,7 @@ export default function DualShot() {
   const [slot, setSlot] = useState<Slot>("big");
   const [error, setError] = useState<string | null>(null);
   const [frame, setFrame] = useState<Frame>("rounded");
-  const [tape, setTape] = useState<Tape>(DEFAULT_TAPE);
+  const [border, setBorder] = useState<Border>(DEFAULT_BORDER);
   const [adjust, setAdjust] = useState<Record<Slot, Adjust>>({
     big: NO_ADJUST,
     small: NO_ADJUST,
@@ -244,7 +278,7 @@ export default function DualShot() {
         filters,
         textures,
         frame,
-        tape,
+        border,
         smallSize,
         smallPos,
         texts,
@@ -454,9 +488,12 @@ export default function DualShot() {
                 >
                   <div
                     className="h-full w-full overflow-hidden"
-                    style={shapeStyle(frame)}
+                    style={shapeStyle(frame, border)}
                   >
-                    <div className="relative h-full w-full overflow-hidden">
+                    <div
+                      className="relative h-full w-full overflow-hidden"
+                      style={innerShapeStyle(frame, border)}
+                    >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={photos.small!}
@@ -468,18 +505,6 @@ export default function DualShot() {
                       <TextureLayers active={textures.small} />
                     </div>
                   </div>
-                  {tape.on && (
-                    <div
-                      aria-hidden
-                      className="absolute left-1/2 top-0"
-                      style={{
-                        width: `${(smallSize * tape.length) / 100}cqw`,
-                        height: `${tape.thickness}cqw`,
-                        transform: "translate(-50%, -50%)",
-                        background: hexToRgba(tape.color, TAPE_ALPHA),
-                      }}
-                    />
-                  )}
                 </div>
                 {texts.map((t) => {
                   const style: React.CSSProperties = {
@@ -605,43 +630,37 @@ export default function DualShot() {
 
             <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
               <button
-                onClick={() => setTape((t) => ({ ...t, on: !t.on }))}
-                aria-pressed={tape.on}
+                onClick={() => setBorder((b) => ({ ...b, on: !b.on }))}
+                aria-pressed={border.on}
                 className={`rounded-lg border py-1 ${
-                  tape.on ? "border-pink-500 bg-pink-50 text-pink-600" : ""
+                  border.on ? "border-pink-500 bg-pink-50 text-pink-600" : ""
                 }`}
               >
-                띠지 {tape.on ? "빼기" : "붙이기"}
+                띠지(흰 테두리) {border.on ? "끄기" : "켜기"}
               </button>
-              {tape.on && (
+              {border.on && (
                 <>
-                  {(
-                    [
-                      ["length", "길이", 20, 200],
-                      ["thickness", "두께", 2, 20],
-                    ] as [keyof Tape, string, number, number][]
-                  ).map(([key, label, min, max]) => (
-                    <label key={key} className="flex items-center gap-3">
-                      <span className="w-10">{label}</span>
-                      <input
-                        type="range"
-                        min={min}
-                        max={max}
-                        value={tape[key] as number}
-                        onChange={(e) =>
-                          setTape((t) => ({ ...t, [key]: Number(e.target.value) }))
-                        }
-                        className="flex-1"
-                      />
-                    </label>
-                  ))}
+                  <label className="flex items-center gap-3">
+                    <span className="w-10">두께</span>
+                    <input
+                      type="range"
+                      min={0.5}
+                      max={10}
+                      step={0.5}
+                      value={border.thickness}
+                      onChange={(e) =>
+                        setBorder((b) => ({ ...b, thickness: Number(e.target.value) }))
+                      }
+                      className="flex-1"
+                    />
+                  </label>
                   <label className="flex items-center gap-3">
                     <span className="w-10">색</span>
                     <input
                       type="color"
-                      value={tape.color}
+                      value={border.color}
                       onChange={(e) =>
-                        setTape((t) => ({ ...t, color: e.target.value }))
+                        setBorder((b) => ({ ...b, color: e.target.value }))
                       }
                       className="h-6 w-10 cursor-pointer border-0 bg-transparent p-0"
                     />
