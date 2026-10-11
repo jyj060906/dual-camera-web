@@ -419,140 +419,143 @@ export default function DualShot() {
 
       {bothTaken && (
         <div className="flex flex-col gap-3">
-          {/* 탭과 사진을 위에 고정해 두고, 아래 칸에서 조절하면서 바로 볼 수 있게 한다. */}
+          {/* 사진과 옆의 아이콘 탭을 위에 고정해 두고, 아래 칸에서 조절하면서 바로 볼 수 있게 한다. */}
           <div className="sticky top-0 z-20 -mx-4 bg-background px-4 pb-2 pt-2 shadow-sm">
-            <div
-              role="tablist"
-              className="mb-2 grid grid-cols-4 gap-1 rounded-xl bg-zinc-100 p-1 text-sm dark:bg-zinc-800"
-            >
-              {TABS.map((t) => (
-                <button
-                  key={t.id}
-                  role="tab"
-                  aria-selected={tab === t.id}
-                  aria-label={t.label}
-                  title={t.label}
-                  onClick={() => setTab(t.id)}
-                  className={`flex items-center justify-center rounded-lg py-2 ${
-                    tab === t.id
-                      ? "bg-white font-medium text-pink-600 shadow-sm dark:bg-zinc-700"
-                      : "text-zinc-500"
-                  }`}
-                >
-                  <t.Icon className="h-5 w-5" />
-                </button>
-              ))}
-            </div>
-            <div
-              ref={stageRef}
-              className="relative mx-auto aspect-[3/4] w-[min(100%,calc(46dvh*0.75))] touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
-            >
-              <div className="absolute inset-0 overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photos.big!}
-                  alt="큰 사진"
-                  className="h-full w-full object-cover"
-                  style={{ filter: filterOf(adjust.big, filters.big) }}
-                />
-                <TextureLayers active={textures.big} />
-              </div>
+            <div className="flex items-start justify-center gap-2">
               <div
-                onPointerDown={startDrag}
-                className="absolute cursor-grab drop-shadow-lg"
-                style={{
-                  width: `${smallSize}%`,
-                  aspectRatio: aspect,
-                  left: `${smallPos.x}%`,
-                  top: `${smallPos.y}%`,
-                }}
+                ref={stageRef}
+                className="relative aspect-[3/4] w-[min(calc(100%-3.25rem),calc(46dvh*0.75))] shrink-0 touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
               >
+                <div className="absolute inset-0 overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photos.big!}
+                    alt="큰 사진"
+                    className="h-full w-full object-cover"
+                    style={{ filter: filterOf(adjust.big, filters.big) }}
+                  />
+                  <TextureLayers active={textures.big} />
+                </div>
                 <div
-                  className="h-full w-full overflow-hidden"
-                  style={shapeStyle(frame)}
+                  onPointerDown={startDrag}
+                  className="absolute cursor-grab drop-shadow-lg"
+                  style={{
+                    width: `${smallSize}%`,
+                    aspectRatio: aspect,
+                    left: `${smallPos.x}%`,
+                    top: `${smallPos.y}%`,
+                  }}
                 >
-                  <div className="relative h-full w-full overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={photos.small!}
-                      alt="작은 사진"
-                      draggable={false}
-                      className="h-full w-full object-cover"
-                      style={{ filter: filterOf(adjust.small, filters.small) }}
-                    />
-                    <TextureLayers active={textures.small} />
+                  <div
+                    className="h-full w-full overflow-hidden"
+                    style={shapeStyle(frame)}
+                  >
+                    <div className="relative h-full w-full overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photos.small!}
+                        alt="작은 사진"
+                        draggable={false}
+                        className="h-full w-full object-cover"
+                        style={{ filter: filterOf(adjust.small, filters.small) }}
+                      />
+                      <TextureLayers active={textures.small} />
+                    </div>
                   </div>
                 </div>
-              </div>
-              {texts.map((t) => {
-                const style: React.CSSProperties = {
-                  left: `${t.x}%`,
-                  top: `${t.y}%`,
-                  fontSize: `${t.size}cqw`,
-                  fontFamily: fontCss(t.font),
-                  fontWeight: t.weight,
-                  transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
-                  transformOrigin: "0 0",
-                  color: t.color,
-                  textShadow: textShadowCss(t),
-                };
-                if (editingText === t.id) {
-                  // 사진 위에서 바로 고치는 중. Enter는 줄바꿈이고, Esc나 바깥을 누르면 끝난다.
-                  // 숨은 span이 글자 크기만큼 칸을 늘려 textarea가 내용에 맞게 커진다.
+                {texts.map((t) => {
+                  const style: React.CSSProperties = {
+                    left: `${t.x}%`,
+                    top: `${t.y}%`,
+                    fontSize: `${t.size}cqw`,
+                    fontFamily: fontCss(t.font),
+                    fontWeight: t.weight,
+                    transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
+                    transformOrigin: "0 0",
+                    color: t.color,
+                    textShadow: textShadowCss(t),
+                  };
+                  if (editingText === t.id) {
+                    // 사진 위에서 바로 고치는 중. Enter는 줄바꿈이고, Esc나 바깥을 누르면 끝난다.
+                    // 숨은 span이 글자 크기만큼 칸을 늘려 textarea가 내용에 맞게 커진다.
+                    return (
+                      <div
+                        key={t.id}
+                        className="absolute grid outline-2 outline-pink-500"
+                        style={style}
+                      >
+                        <span
+                          aria-hidden
+                          className="invisible col-start-1 row-start-1 whitespace-pre leading-tight"
+                        >
+                          {t.text + "\n "}
+                        </span>
+                        <textarea
+                          autoFocus
+                          wrap="off"
+                          rows={1}
+                          aria-label="텍스트 직접 수정"
+                          value={t.text}
+                          maxLength={MAX_TEXT_LENGTH}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onChange={(e) => updateText(t.id, { text: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") e.currentTarget.blur();
+                          }}
+                          onBlur={() => setEditingText(null)}
+                          className="col-start-1 row-start-1 m-0 resize-none overflow-hidden whitespace-pre border-0 bg-transparent p-0 leading-tight outline-none"
+                          style={{
+                            font: "inherit",
+                            color: "inherit",
+                            textShadow: "inherit",
+                            width: 0, // 기본 너비가 상자를 넓히지 않도록 하고,
+                            minWidth: "100%", // 숨은 span이 정한 칸에 맞춘다.
+                          }}
+                        />
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       key={t.id}
-                      className="absolute grid outline-2 outline-pink-500"
+                      onPointerDown={(e) => startTextDrag(e, t.id)}
+                      className={`absolute cursor-grab touch-none whitespace-pre leading-tight ${
+                        selectedText === t.id
+                          ? "outline-2 outline-dashed outline-pink-400"
+                          : ""
+                      }`}
                       style={style}
                     >
-                      <span
-                        aria-hidden
-                        className="invisible col-start-1 row-start-1 whitespace-pre leading-tight"
-                      >
-                        {t.text + "\n "}
-                      </span>
-                      <textarea
-                        autoFocus
-                        wrap="off"
-                        rows={1}
-                        aria-label="텍스트 직접 수정"
-                        value={t.text}
-                        maxLength={MAX_TEXT_LENGTH}
-                        onFocus={(e) => e.currentTarget.select()}
-                        onChange={(e) => updateText(t.id, { text: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") e.currentTarget.blur();
-                        }}
-                        onBlur={() => setEditingText(null)}
-                        className="col-start-1 row-start-1 m-0 resize-none overflow-hidden whitespace-pre border-0 bg-transparent p-0 leading-tight outline-none"
-                        style={{
-                          font: "inherit",
-                          color: "inherit",
-                          textShadow: "inherit",
-                          width: 0, // 기본 너비가 상자를 넓히지 않도록 하고,
-                          minWidth: "100%", // 숨은 span이 정한 칸에 맞춘다.
-                        }}
-                      />
+                      {t.text || " "}
                     </div>
                   );
-                }
-                return (
-                  <div
-                    key={t.id}
-                    onPointerDown={(e) => startTextDrag(e, t.id)}
-                    className={`absolute cursor-grab touch-none whitespace-pre leading-tight ${
-                      selectedText === t.id
-                        ? "outline-2 outline-dashed outline-pink-400"
-                        : ""
-                    }`}
-                    style={style}
-                  >
-                    {t.text || " "}
-                  </div>
-                );
-              })}
-            </div>
+                })}
+              </div>
 
+              <div
+                role="tablist"
+                aria-orientation="vertical"
+                className="flex shrink-0 flex-col gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800"
+              >
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    role="tab"
+                    aria-selected={tab === t.id}
+                    aria-label={t.label}
+                    title={t.label}
+                    onClick={() => setTab(t.id)}
+                    className={`flex h-10 w-10 items-center justify-center rounded-lg ${
+                      tab === t.id
+                        ? "bg-white font-medium text-pink-600 shadow-sm dark:bg-zinc-700"
+                        : "text-zinc-500"
+                    }`}
+                  >
+                    <t.Icon className="h-5 w-5" />
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {tab === "layout" && (
