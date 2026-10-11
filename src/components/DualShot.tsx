@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { TEXTURES, TextureLayers, type TextureId } from "./textures";
 import { AdjustIcon, LayoutIcon, SaveIcon, TextIcon } from "./icons";
 import PublishPanel from "./PublishPanel";
+import { widenFront } from "@/lib/camera";
 import {
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
@@ -163,6 +164,9 @@ export default function DualShot() {
   const [smallSize, setSmallSize] = useState(32); // 큰 사진 너비 대비 %
   const [smallPos, setSmallPos] = useState({ x: 6, y: 6 }); // 왼쪽·위 기준 %
 
+  // 전면 광각 적용 여부(후면이면 null)
+  const [wide, setWide] = useState<boolean | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -190,13 +194,17 @@ export default function DualShot() {
         video: { facingMode: { ideal: facingFor(slot) } },
         audio: false,
       })
-      .then((stream) => {
+      .then(async (first) => {
+        // 전면이면 광각을 시도한다. 후면은 그대로 쓴다.
+        const front = facingFor(slot) === "user";
+        const { stream, wide } = front ? await widenFront(first) : { stream: first, wide: null };
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
         streamRef.current = stream;
         setError(null);
+        setWide(wide);
         if (videoRef.current) videoRef.current.srcObject = stream;
       })
       .catch(() =>
@@ -448,6 +456,13 @@ export default function DualShot() {
             />
           </div>
           {error && <p className="text-sm text-red-500">{error}</p>}
+          {facingFor(slot) === "user" && wide !== null && (
+            <p className="text-xs text-zinc-500">
+              {wide
+                ? "전면 광각으로 찍고 있어요."
+                : "이 기기·브라우저에서는 전면 광각을 켤 수 없어 기본 화각으로 찍어요."}
+            </p>
+          )}
           <button
             onClick={capture}
             className="rounded-full bg-pink-500 py-3 font-medium text-white"
