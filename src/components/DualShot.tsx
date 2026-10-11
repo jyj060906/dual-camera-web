@@ -22,6 +22,17 @@ const FRAMES: { id: Frame; label: string; aspect: number }[] = [
 const STAR_CLIP =
   "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)";
 
+type TextItem = {
+  id: number;
+  text: string;
+  x: number; // 사진 틀 너비 대비 %
+  y: number; // 사진 틀 높이 대비 %
+  size: number; // 사진 틀 너비 대비 %
+  color: string;
+};
+
+const TEXT_COLORS = ["#ffffff", "#000000", "#ec4899", "#facc15", "#38bdf8"];
+
 type Adjust = { brightness: number; contrast: number; saturate: number };
 const NO_ADJUST: Adjust = { brightness: 100, contrast: 100, saturate: 100 };
 
@@ -85,6 +96,9 @@ export default function DualShot() {
     big: [],
     small: [],
   });
+  const [texts, setTexts] = useState<TextItem[]>([]);
+  const [selectedText, setSelectedText] = useState<number | null>(null);
+  const nextTextId = useRef(1);
   const [editSlot, setEditSlot] = useState<Slot>("big");
   const [smallSize, setSmallSize] = useState(32); // 큰 사진 너비 대비 %
   const [smallPos, setSmallPos] = useState({ x: 6, y: 6 }); // 왼쪽·위 기준 %
@@ -164,6 +178,51 @@ export default function DualShot() {
     setAdjust((a) => ({ big: a.small, small: a.big }));
     setFilters((f) => ({ big: f.small, small: f.big }));
     setTextures((t) => ({ big: t.small, small: t.big }));
+  }
+
+  function addText() {
+    const id = nextTextId.current++;
+    setTexts((t) => [
+      ...t,
+      { id, text: "텍스트", x: 30, y: 40, size: 9, color: "#ffffff" },
+    ]);
+    setSelectedText(id);
+  }
+
+  function updateText(id: number, patch: Partial<TextItem>) {
+    setTexts((t) => t.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }
+
+  function removeText(id: number) {
+    setTexts((t) => t.filter((x) => x.id !== id));
+    setSelectedText(null);
+  }
+
+  function startTextDrag(e: React.PointerEvent<HTMLDivElement>, id: number) {
+    const stage = stageRef.current;
+    const item = texts.find((x) => x.id === id);
+    if (!stage || !item) return;
+    setSelectedText(id);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const rect = stage.getBoundingClientRect();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const target = e.currentTarget;
+
+    const move = (ev: PointerEvent) => {
+      const x = item.x + ((ev.clientX - startX) / rect.width) * 100;
+      const y = item.y + ((ev.clientY - startY) / rect.height) * 100;
+      updateText(id, {
+        x: Math.min(Math.max(0, x), 95),
+        y: Math.min(Math.max(0, y), 95),
+      });
+    };
+    const up = () => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", up);
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", up);
   }
 
   function toggleTexture(id: TextureId) {
@@ -262,7 +321,7 @@ export default function DualShot() {
         <div className="flex flex-col gap-3">
           <div
             ref={stageRef}
-            className="relative aspect-[3/4] touch-none overflow-hidden rounded-2xl bg-zinc-200"
+            className="relative aspect-[3/4] touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
           >
             <div className="absolute inset-0 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -301,6 +360,24 @@ export default function DualShot() {
                 </div>
               </div>
             </div>
+            {texts.map((t) => (
+              <div
+                key={t.id}
+                onPointerDown={(e) => startTextDrag(e, t.id)}
+                className={`absolute cursor-grab touch-none whitespace-pre font-bold leading-tight ${
+                  selectedText === t.id ? "outline-2 outline-dashed outline-pink-400" : ""
+                }`}
+                style={{
+                  left: `${t.x}%`,
+                  top: `${t.y}%`,
+                  fontSize: `${t.size}cqw`,
+                  color: t.color,
+                  textShadow: "0 1px 4px rgba(0,0,0,0.45)",
+                }}
+              >
+                {t.text || " "}
+              </div>
+            ))}
           </div>
 
           <label className="flex items-center gap-3 text-sm">
@@ -406,6 +483,80 @@ export default function DualShot() {
             >
               초기화
             </button>
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-xl border p-3 text-sm">
+            <button
+              onClick={addText}
+              className="rounded-lg border border-pink-500 py-1 text-pink-600"
+            >
+              + 텍스트 추가
+            </button>
+            {texts.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto">
+                {texts.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setSelectedText(t.id)}
+                    className={`max-w-28 shrink-0 truncate rounded-full border px-3 py-1 ${
+                      selectedText === t.id
+                        ? "border-pink-500 bg-pink-50 text-pink-600"
+                        : ""
+                    }`}
+                  >
+                    {t.text || "(빈 텍스트)"}
+                  </button>
+                ))}
+              </div>
+            )}
+            {texts.find((t) => t.id === selectedText) && (
+              <>
+                <input
+                  value={texts.find((t) => t.id === selectedText)!.text}
+                  onChange={(e) =>
+                    updateText(selectedText!, { text: e.target.value })
+                  }
+                  maxLength={60}
+                  placeholder="내용을 입력하세요"
+                  className="rounded-lg border px-3 py-2"
+                />
+                <label className="flex items-center gap-3">
+                  <span className="w-10">크기</span>
+                  <input
+                    type="range"
+                    min={4}
+                    max={20}
+                    value={texts.find((t) => t.id === selectedText)!.size}
+                    onChange={(e) =>
+                      updateText(selectedText!, { size: Number(e.target.value) })
+                    }
+                    className="flex-1"
+                  />
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="w-10">색</span>
+                  {TEXT_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => updateText(selectedText!, { color: c })}
+                      aria-label={`색상 ${c}`}
+                      className={`h-7 w-7 rounded-full border ${
+                        texts.find((t) => t.id === selectedText)!.color === c
+                          ? "ring-2 ring-pink-500 ring-offset-1"
+                          : ""
+                      }`}
+                      style={{ background: c }}
+                    />
+                  ))}
+                </div>
+                <button
+                  onClick={() => removeText(selectedText!)}
+                  className="self-end text-zinc-500 underline"
+                >
+                  이 텍스트 삭제
+                </button>
+              </>
+            )}
           </div>
 
           <div className="flex gap-2 text-sm">
