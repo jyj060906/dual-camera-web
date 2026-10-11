@@ -417,8 +417,28 @@ export default function DualShot() {
 
       {bothTaken && (
         <div className="flex flex-col gap-3">
-          {/* 사진은 위에 고정해 두고, 아래 탭에서 조절하면서 바로 볼 수 있게 한다. */}
+          {/* 탭과 사진을 위에 고정해 두고, 아래 칸에서 조절하면서 바로 볼 수 있게 한다. */}
           <div className="sticky top-0 z-20 -mx-4 bg-background px-4 pb-2 pt-2 shadow-sm">
+            <div
+              role="tablist"
+              className="mb-2 grid grid-cols-4 gap-1 rounded-xl bg-zinc-100 p-1 text-sm dark:bg-zinc-800"
+            >
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`rounded-lg py-2 ${
+                    tab === t.id
+                      ? "bg-white font-medium text-pink-600 shadow-sm dark:bg-zinc-700"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
             <div
               ref={stageRef}
               className="relative mx-auto aspect-[3/4] w-[min(100%,calc(46dvh*0.75))] touch-none overflow-hidden rounded-2xl bg-zinc-200 [container-type:inline-size]"
@@ -529,27 +549,6 @@ export default function DualShot() {
               })}
             </div>
 
-          </div>
-
-          <div
-            role="tablist"
-            className="grid grid-cols-4 gap-1 rounded-xl bg-zinc-100 p-1 text-sm dark:bg-zinc-800"
-          >
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                role="tab"
-                aria-selected={tab === t.id}
-                onClick={() => setTab(t.id)}
-                className={`rounded-lg py-2 ${
-                  tab === t.id
-                    ? "bg-white font-medium text-pink-600 shadow-sm dark:bg-zinc-700"
-                    : "text-zinc-500"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
           </div>
 
           {tab === "layout" && (
