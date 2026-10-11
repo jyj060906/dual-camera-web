@@ -95,6 +95,8 @@ export default function DualShot() {
   });
   const [texts, setTexts] = useState<TextItem[]>([]);
   const [selectedText, setSelectedText] = useState<number | null>(null);
+  const [editingText, setEditingText] = useState<number | null>(null);
+  const lastTap = useRef<{ id: number; time: number } | null>(null);
   const nextTextId = useRef(1);
   const [favorites, setFavorites] = useState<string[]>(() =>
     typeof window === "undefined" ? [] : loadFavorites(),
@@ -290,9 +292,19 @@ export default function DualShot() {
         y: Math.min(Math.max(0, y), 95),
       });
     };
-    const up = () => {
+    const up = (ev: PointerEvent) => {
       target.removeEventListener("pointermove", move);
       target.removeEventListener("pointerup", up);
+      // 제자리에서 두 번 연속 누르면 그 자리에서 글자를 고친다.
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) >= 6) return;
+      const now = Date.now();
+      const prev = lastTap.current;
+      if (prev && prev.id === id && now - prev.time < 350) {
+        lastTap.current = null;
+        setEditingText(id);
+      } else {
+        lastTap.current = { id, time: now };
+      }
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up);
@@ -433,28 +445,71 @@ export default function DualShot() {
                 </div>
               </div>
             </div>
-            {texts.map((t) => (
-              <div
-                key={t.id}
-                onPointerDown={(e) => startTextDrag(e, t.id)}
-                className={`absolute cursor-grab touch-none whitespace-pre leading-tight ${
-                  selectedText === t.id ? "outline-2 outline-dashed outline-pink-400" : ""
-                }`}
-                style={{
-                  left: `${t.x}%`,
-                  top: `${t.y}%`,
-                  fontSize: `${t.size}cqw`,
-                  fontFamily: fontCss(t.font),
-                  fontWeight: t.weight,
-                  transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
-                  transformOrigin: "0 0",
-                  color: t.color,
-                  textShadow: textShadowCss(t),
-                }}
-              >
-                {t.text || " "}
-              </div>
-            ))}
+            {texts.map((t) => {
+              const style: React.CSSProperties = {
+                left: `${t.x}%`,
+                top: `${t.y}%`,
+                fontSize: `${t.size}cqw`,
+                fontFamily: fontCss(t.font),
+                fontWeight: t.weight,
+                transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
+                transformOrigin: "0 0",
+                color: t.color,
+                textShadow: textShadowCss(t),
+              };
+              if (editingText === t.id) {
+                // 사진 위에서 바로 고치는 중. 내용은 입력하는 대로 반영한다.
+                return (
+                  <div
+                    key={t.id}
+                    contentEditable
+                    suppressContentEditableWarning
+                    role="textbox"
+                    aria-label="텍스트 직접 수정"
+                    ref={(el) => {
+                      if (!el || el.dataset.init === "1") return;
+                      el.dataset.init = "1";
+                      el.textContent = t.text;
+                      el.focus();
+                      const range = document.createRange();
+                      range.selectNodeContents(el);
+                      const sel = window.getSelection();
+                      sel?.removeAllRanges();
+                      sel?.addRange(range);
+                    }}
+                    onInput={(e) => {
+                      const el = e.currentTarget;
+                      const text = (el.textContent ?? "").slice(0, 60);
+                      if (el.textContent !== text) el.textContent = text;
+                      updateText(t.id, { text });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "Escape") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    onBlur={() => setEditingText(null)}
+                    className="absolute min-w-[1ch] cursor-text whitespace-pre leading-tight outline-2 outline-pink-500"
+                    style={style}
+                  />
+                );
+              }
+              return (
+                <div
+                  key={t.id}
+                  onPointerDown={(e) => startTextDrag(e, t.id)}
+                  className={`absolute cursor-grab touch-none whitespace-pre leading-tight ${
+                    selectedText === t.id
+                      ? "outline-2 outline-dashed outline-pink-400"
+                      : ""
+                  }`}
+                  style={style}
+                >
+                  {t.text || " "}
+                </div>
+              );
+            })}
           </div>
 
           <label className="flex items-center gap-3 text-sm">
@@ -569,6 +624,11 @@ export default function DualShot() {
             >
               + 텍스트 추가
             </button>
+            {texts.length > 0 && (
+              <p className="text-xs text-zinc-500">
+                사진 위의 글자를 두 번 누르면 그 자리에서 고칠 수 있어요.
+              </p>
+            )}
             {texts.length > 0 && (
               <div className="flex gap-2 overflow-x-auto">
                 {texts.map((t) => (
