@@ -29,6 +29,9 @@ type TextItem = {
   y: number; // 사진 틀 높이 대비 %
   size: number; // 사진 틀 너비 대비 %
   color: string;
+  weight: number; // 글자 두께 100~900
+  scaleX: number; // 가로 폭 %
+  scaleY: number; // 세로 길이 %
 };
 
 const TEXT_COLORS = ["#ffffff", "#000000", "#ec4899", "#facc15", "#38bdf8"];
@@ -184,7 +187,17 @@ export default function DualShot() {
     const id = nextTextId.current++;
     setTexts((t) => [
       ...t,
-      { id, text: "텍스트", x: 30, y: 40, size: 9, color: "#ffffff" },
+      {
+        id,
+        text: "텍스트",
+        x: 30,
+        y: 40,
+        size: 9,
+        color: "#ffffff",
+        weight: 700,
+        scaleX: 100,
+        scaleY: 100,
+      },
     ]);
     setSelectedText(id);
   }
@@ -364,13 +377,17 @@ export default function DualShot() {
               <div
                 key={t.id}
                 onPointerDown={(e) => startTextDrag(e, t.id)}
-                className={`absolute cursor-grab touch-none whitespace-pre font-bold leading-tight ${
+                className={`absolute cursor-grab touch-none whitespace-pre leading-tight ${
                   selectedText === t.id ? "outline-2 outline-dashed outline-pink-400" : ""
                 }`}
                 style={{
                   left: `${t.x}%`,
                   top: `${t.y}%`,
                   fontSize: `${t.size}cqw`,
+                  fontFamily: "var(--font-geist-sans), sans-serif",
+                  fontWeight: t.weight,
+                  transform: `scale(${t.scaleX / 100}, ${t.scaleY / 100})`,
+                  transformOrigin: "0 0",
                   color: t.color,
                   textShadow: "0 1px 4px rgba(0,0,0,0.45)",
                 }}
@@ -533,6 +550,32 @@ export default function DualShot() {
                     className="flex-1"
                   />
                 </label>
+                {(
+                  [
+                    ["weight", "두께", 100, 900, 100],
+                    ["scaleY", "세로 길이", 50, 400, 10],
+                    ["scaleX", "가로 폭", 50, 200, 10],
+                  ] as [keyof TextItem, string, number, number, number][]
+                ).map(([key, label, min, max, step]) => (
+                  <label key={key} className="flex items-center gap-3">
+                    <span className="w-16">{label}</span>
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={
+                        texts.find((t) => t.id === selectedText)![key] as number
+                      }
+                      onChange={(e) =>
+                        updateText(selectedText!, {
+                          [key]: Number(e.target.value),
+                        })
+                      }
+                      className="flex-1"
+                    />
+                  </label>
+                ))}
                 <div className="flex items-center gap-2">
                   <span className="w-10">색</span>
                   {TEXT_COLORS.map((c) => (
