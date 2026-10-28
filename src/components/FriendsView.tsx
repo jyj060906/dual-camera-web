@@ -44,8 +44,8 @@ function PersonRow({ person, children }: { person: Person; children?: React.Reac
   );
 }
 
-const small = "rounded-full border px-3 py-1 text-xs disabled:opacity-50";
-const smallPrimary = "rounded-full bg-pink-500 px-3 py-1 text-xs font-medium text-white disabled:opacity-50";
+const small = "rounded-none border px-3 py-1 text-xs disabled:opacity-50";
+const smallPrimary = "rounded-none bg-pink-500 px-3 py-1 text-xs font-medium text-white disabled:opacity-50";
 
 // 목록을 불러와 보여 주는 공통 틀. reload()를 부르면 다시 불러온다.
 function useList<T>(load: () => Promise<T>, deps: unknown[]) {

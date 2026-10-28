@@ -33,7 +33,7 @@ export default function RequireLogin({
     return (
       <div className="flex flex-col gap-3 rounded-xl border p-4 text-sm">
         <p>로그인이 필요해요.</p>
-        <Link href="/login" className="rounded-full bg-pink-500 py-2 text-center font-medium text-white">
+        <Link href="/login" className="rounded-none bg-pink-500 py-2 text-center font-medium text-white">
           로그인하러 가기
         </Link>
       </div>
@@ -43,7 +43,7 @@ export default function RequireLogin({
     return (
       <div className="flex flex-col gap-3 rounded-xl border p-4 text-sm">
         <p>친구를 찾고 추가하려면 먼저 아이디를 만들어야 해요.</p>
-        <Link href="/profile" className="rounded-full bg-pink-500 py-2 text-center font-medium text-white">
+        <Link href="/profile" className="rounded-none bg-pink-500 py-2 text-center font-medium text-white">
           아이디 만들기
         </Link>
       </div>

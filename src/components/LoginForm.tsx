@@ -36,7 +36,7 @@ export default function LoginForm() {
     return (
       <div className="flex flex-col gap-3 text-sm">
         <p>이미 로그인되어 있어요.</p>
-        <Link href="/" className="rounded-full bg-pink-500 py-2 text-center font-medium text-white">
+        <Link href="/" className="rounded-none bg-pink-500 py-2 text-center font-medium text-white">
           사진 만들러 가기
         </Link>
       </div>
@@ -164,7 +164,7 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={busy}
-          className="rounded-full bg-pink-500 py-3 font-medium text-white disabled:opacity-50"
+          className="rounded-none bg-pink-500 py-3 font-medium text-white disabled:opacity-50"
         >
           {busy ? "잠시만요..." : mode === "login" ? "로그인" : "가입하기"}
         </button>
@@ -182,7 +182,7 @@ export default function LoginForm() {
       </div>
 
       <div className="flex flex-col gap-2 text-sm">
-        <button onClick={() => oauth("google")} className="rounded-full border py-3">
+        <button onClick={() => oauth("google")} className="rounded-none border py-3">
           Google로 계속하기
         </button>
         <p className="text-xs text-zinc-500">

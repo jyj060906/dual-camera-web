@@ -162,7 +162,7 @@ ok("공개 범위를 안 정하면 거부", !!(await post(alice, "everyone")).er
 ok("남의 폴더 경로로는 올릴 수 없음", !!(await post(alice, "public", "", `${bob}/x.jpg`)).error);
 ok("남의 이름으로 올릴 수 없음", !!(await as(alice, "insert into posts (author, image_path, visibility) values ($1,$2,'public')", [bob, `${bob}/x.jpg`])).error);
 ok("본문 500자 초과 거부", !!(await post(alice, "public", "가".repeat(501))).error);
-ok("남의 게시물은 (공개여도) 읽을 수 없음 — 규칙 미정이라 열지 않음", (await as(bob, "select * from posts")).rows.length === 0 && (await as(null, "select * from posts")).rows.length === 0);
+ok("로그인하지 않은 사람은 게시물을 읽을 수 없음", (await as(null, "select * from posts")).rows.length === 0);
 ok("순서 바꾸기", (await as(alice, "select reorder_my_posts($1::uuid[])", [[p1, p3, p2]])).error === undefined && (await as(alice, "select id from posts order by sort_order, created_at desc")).rows.map((x) => x.id).join() === [p1, p3, p2].join());
 ok("일부만 담으면 거부", !!(await as(alice, "select reorder_my_posts($1::uuid[])", [[p1, p2]])).error);
 ok("중복이 있으면 거부", !!(await as(alice, "select reorder_my_posts($1::uuid[])", [[p1, p1, p2]])).error);
@@ -175,7 +175,71 @@ ok("게시물 삭제 불가(정책 없음)", (await as(alice, "delete from posts
 ok("posts 버킷은 비공개", (await admin.query("select public from storage.buckets where id='posts'")).rows[0].public === false);
 ok("내 폴더에 게시물 이미지 업로드", (await as(alice, "insert into storage.objects (bucket_id, name) values ('posts', $1)", [`${alice}/a.jpg`])).count === 1);
 ok("남의 폴더에는 업로드 불가", !!(await as(alice, "insert into storage.objects (bucket_id, name) values ('posts', $1)", [`${bob}/a.jpg`])).error);
-ok("내 게시물 이미지만 읽을 수 있음", (await as(alice, "select * from storage.objects where bucket_id='posts'")).rows.length === 1 && (await as(bob, "select * from storage.objects where bucket_id='posts'")).rows.length === 0 && (await as(null, "select * from storage.objects where bucket_id='posts'")).rows.length === 0);
+ok("본인 이미지는 읽을 수 있고, 게시물이 없는 이미지는 남이 못 읽음", (await as(alice, "select * from storage.objects where bucket_id='posts'")).rows.length === 1 && (await as(bob, "select * from storage.objects where bucket_id='posts'")).rows.length === 0 && (await as(null, "select * from storage.objects where bucket_id='posts'")).rows.length === 0);
+
+// ── 다른 사람의 공개 게시물 열람 ──
+const names = async (uid) => (await as(uid, "select id from posts")).rows.map((x) => x.id);
+ok("다른 사용자는 공개 계정의 공개 게시물(p1)을 볼 수 있음", (await names(bob)).includes(p1));
+ok("다른 사용자는 친구공개·비공개 게시물은 볼 수 없음", !(await names(bob)).includes(p2) && !(await names(bob)).includes(p3));
+ok("로그인하지 않으면 공개 게시물도 볼 수 없음(비로그인 열람은 미정)", (await as(null, "select * from posts")).rows.length === 0);
+await as(alice, "update profiles set is_private=true where id=$1", [alice]);
+ok("계정이 비공개이면 공개 게시물도 남에게 안 보임", !(await names(bob)).includes(p1));
+ok("비공개 계정이어도 본인은 자기 게시물을 모두 봄", (await as(alice, "select id from posts where author=$1", [alice])).rows.length === 3);
+await as(alice, "update profiles set is_private=false where id=$1", [alice]);
+ok("다시 공개 계정이 되면 공개 게시물이 보임", (await names(bob)).includes(p1));
+ok("남의 공개 게시물이라도 순서·내용은 못 바꿈", (await as(bob, "update posts set sort_order=77 where id=$1", [p1])).count === 0);
+ok("남의 공개 게시물 순서 변경 함수에 섞어도 거부", !!(await as(alice, "select reorder_my_posts($1::uuid[])", [[p1, p2, p3, bp]])).error);
+ok("공개 게시물의 이미지 파일을 다른 사용자가 읽을 수 있음", await (async () => {
+  const path = `${alice}/pub.jpg`;
+  await admin.query("insert into storage.objects (bucket_id, name) values ('posts', $1)", [path]);
+  await admin.query("insert into posts (author, image_path, visibility) values ($1,$2,'public')", [alice, path]);
+  return (await as(bob, "select * from storage.objects where bucket_id='posts' and name=$1", [path])).rows.length === 1;
+})());
+ok("친구공개 게시물의 이미지 파일은 다른 사용자가 못 읽음", await (async () => {
+  const path = `${alice}/fr.jpg`;
+  await admin.query("insert into storage.objects (bucket_id, name) values ('posts', $1)", [path]);
+  await admin.query("insert into posts (author, image_path, visibility) values ($1,$2,'friends')", [alice, path]);
+  return (await as(bob, "select * from storage.objects where bucket_id='posts' and name=$1", [path])).rows.length === 0;
+})());
+ok("로그인하지 않으면 이미지 파일도 못 읽음", (await as(null, "select * from storage.objects where bucket_id='posts'")).rows.length === 0);
+
+// ── 좋아요 ──
+ok("내 게시물에 좋아요", (await as(alice, "insert into post_likes (post_id, user_id) values ($1,$2)", [p1, alice])).count === 1);
+ok("같은 게시물에 좋아요 두 번은 거부(중복)", !!(await as(alice, "insert into post_likes (post_id, user_id) values ($1,$2)", [p1, alice])).error);
+ok("남의 이름으로 좋아요 불가", !!(await as(alice, "insert into post_likes (post_id, user_id) values ($1,$2)", [p2, bob])).error);
+const bpPriv = (await post(bob, "friends")).rows[0].id; // bob의 친구공개 게시물: alice는 읽을 수 없다
+ok("읽을 수 없는 게시물(남의 친구공개)에는 좋아요 불가", !!(await as(alice, "insert into post_likes (post_id, user_id) values ($1,$2)", [bpPriv, alice])).error);
+ok("읽을 수 없는 게시물(친구공개)의 좋아요는 보이지 않음", (await as(bob, "select * from post_likes where post_id=$1", [p2])).rows.length === 0 && (await as(null, "select * from post_likes")).rows.length === 0);
+ok("내 좋아요 조회", (await as(alice, "select * from post_likes where post_id=$1", [p1])).rows.length === 1);
+ok("남이 내 좋아요를 취소할 수 없음", (await as(bob, "delete from post_likes")).count === 0);
+ok("좋아요 취소", (await as(alice, "delete from post_likes where post_id=$1 and user_id=$2", [p1, alice])).count === 1);
+
+// ── 댓글 ──
+const cm = (uid, post, body) => as(uid, "insert into post_comments (post_id, author, body) values ($1,$2,$3) returning id", [post, uid, body]);
+const c1 = (await cm(alice, p1, "첫 댓글")).rows[0].id;
+ok("내 게시물에 댓글 작성", !!c1);
+ok("빈 댓글·공백만 있는 댓글은 거부", !!(await cm(alice, p1, "   ")).error);
+ok("500자 초과 댓글 거부", !!(await cm(alice, p1, "가".repeat(501))).error);
+ok("남의 이름으로 댓글 불가", !!(await as(alice, "insert into post_comments (post_id, author, body) values ($1,$2,'x')", [p1, bob])).error);
+ok("읽을 수 없는 게시물(남의 친구공개)에는 댓글 불가", !!(await cm(alice, bpPriv, "x")).error);
+const c2 = (await cm(alice, p2, "친구공개 글의 댓글")).rows[0].id;
+ok("읽을 수 없는 게시물(친구공개)의 댓글은 남에게 보이지 않음", (await as(bob, "select * from post_comments where post_id=$1", [p2])).rows.length === 0 && (await as(null, "select * from post_comments")).rows.length === 0);
+ok("공개 게시물의 댓글은 다른 사용자에게 보임", (await as(bob, "select * from post_comments where post_id=$1", [p1])).rows.length === 1);
+ok("댓글 조회", (await as(alice, "select * from post_comments where post_id=$1", [p1])).rows.length === 1);
+r = await as(alice, "update post_comments set body='고친 댓글' where id=$1 returning body, updated_at, created_at", [c1]);
+ok("내 댓글 수정, updated_at 갱신", r.rows?.[0]?.body === "고친 댓글" && r.rows[0].updated_at >= r.rows[0].created_at);
+ok("수정할 때 빈 내용은 거부", !!(await as(alice, "update post_comments set body=' ' where id=$1", [c1])).error);
+ok("남의 댓글은 수정할 수 없음", (await as(bob, "update post_comments set body='해킹' where id=$1", [c1])).count === 0);
+ok("댓글 작성자·게시물은 바꿀 수 없음", !!(await as(alice, "update post_comments set post_id=$2 where id=$1", [c1, p2])).error);
+ok("행을 완전히 지울 수 없음(정책 없음)", (await as(alice, "delete from post_comments")).count === 0);
+ok("삭제하면서 본문을 바꿀 수 없음", !!(await as(alice, "update post_comments set body='몰래', deleted_at=now() where id=$1", [c1])).error);
+ok("남의 댓글은 삭제할 수 없음", (await as(bob, "update post_comments set deleted_at=now() where id=$1", [c1])).count === 0);
+ok("내 댓글 삭제(deleted_at)", (await as(alice, "update post_comments set deleted_at=now() where id=$1", [c1])).count === 1);
+ok("삭제한 댓글의 내용은 기록으로 남음", (await admin.query("select body, deleted_at from post_comments where id=$1", [c1])).rows[0]?.body === "고친 댓글");
+ok("삭제한 댓글은 앱 조회(deleted_at is null)에서 빠짐", (await as(alice, "select * from post_comments where post_id=$1 and deleted_at is null", [p1])).rows.length === 0);
+ok("삭제 기록은 작성자 본인만 읽을 수 있음", (await as(alice, "select * from post_comments where deleted_at is not null")).rows.length === 1 && (await as(bob, "select * from post_comments where deleted_at is not null")).rows.length === 0);
+ok("삭제한 댓글은 다시 수정·복구할 수 없음", (await as(alice, "update post_comments set body='되살림' where id=$1", [c1])).count === 0 && (await as(alice, "update post_comments set deleted_at=null where id=$1", [c1])).count === 0);
+ok("게시물을 지우려 해도 댓글 기록 때문에 막힘(기록 보호)", !!(await admin.query("delete from posts where id=$1", [p1]).catch((e) => ({ error: e.code }))).error);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await admin.end();

@@ -4,16 +4,24 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
-import { VISIBILITY_LABEL, listMyPosts, saveOrder, type Post } from "@/lib/posts";
+import { listPostsBy, saveOrder, type Post } from "@/lib/posts";
 import { displayName } from "./Avatar";
+import PostViewer from "./PostViewer";
 import RequireLogin from "./RequireLogin";
 
-// 내 피드: 필름 시트처럼 듀얼샷이 촘촘히 붙는 화면.
-// 색과 글꼴은 이 화면 안에서만 쓴다(사진 색을 해치지 않는 따뜻한 중성 배경).
-const INK = "#1B1B1B";
-const ACCENT = "#E8552D";
-const serif = { fontFamily: "var(--font-noto-serif-kr), serif" };
-const numeric = { fontFamily: "var(--font-playfair), serif" };
+// 내 피드: feed-app 시안의 흑백 미니멀. 듀얼샷이 촘촘히 붙고 그리드/번호/스트립으로 볼 수 있다.
+const INK = "#000000";
+const GRAY = "#555555";
+const serif = {};
+const numeric = {};
+
+type ViewMode = "grid" | "num" | "strip";
+const VIEW_MODES: { id: ViewMode; label: string }[] = [
+  { id: "grid", label: "그리드" },
+  { id: "num", label: "번호" },
+  { id: "strip", label: "스트립" },
+];
+const pad2 = (n: number) => String(n).padStart(2, "0");
 
 const fmtDate = (iso: string) => {
   const d = new Date(iso);
@@ -29,10 +37,12 @@ function move<T>(list: T[], from: number, to: number): T[] {
 }
 
 function Inner() {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const userId = user?.id ?? null;
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [open, setOpen] = useState<Post | null>(null);
+  const [mode, setMode] = useState<ViewMode>("grid");
 
   // 배치 편집 상태: draft가 null이 아니면 편집 중
   const [draft, setDraft] = useState<Post[] | null>(null);
@@ -49,7 +59,8 @@ function Inner() {
     let cancelled = false;
     (async () => {
       try {
-        const list = await listMyPosts();
+        if (!userId) return;
+        const list = await listPostsBy(userId);
         if (!cancelled) setPosts(list);
       } catch (e) {
         if (!cancelled) setLoadError(errorMessage(e));
@@ -58,7 +69,7 @@ function Inner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [userId]);
 
   // 드래그 중 화면 가장자리에 가까워지면 스크롤한다(모바일에서 멀리 옮길 때 필요).
   useEffect(() => {
@@ -75,13 +86,7 @@ function Inner() {
     return () => cancelAnimationFrame(raf);
   }, [dragging]);
 
-  const closeSheet = useCallback(() => setOpen(null), []);
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeSheet();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, closeSheet]);
+  const closeViewer = useCallback(() => setOpen(null), []);
 
   if (loadError) return <p className="p-4 text-sm text-red-600">{loadError}</p>;
   if (!posts) return <p className="p-4 text-sm" style={{ color: INK }}>불러오는 중...</p>;
@@ -146,32 +151,56 @@ function Inner() {
   const selectedIndex = selected && draft ? draft.findIndex((p) => p.id === selected) : -1;
 
   return (
-    <div className="flex min-h-screen flex-col" style={{ background: "#F3F1EC", color: INK }}>
+    <div className="flex min-h-screen flex-col" style={{ background: "#FFFFFF", color: INK }}>
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col">
-      <header className="flex items-end justify-between gap-3 px-3 pb-3 pt-4">
-        <div className="min-w-0">
-          <Link href="/" className="text-xs underline-offset-2 hover:underline" style={{ color: "#6b675f" }}>
+      <header className="px-5 pt-4">
+        <div className="flex items-center justify-between gap-3 text-[15px]">
+          <Link href="/" className="min-h-11 content-center">
             ← 사진 만들기
           </Link>
-          <h1 className="mt-1 truncate text-2xl font-semibold leading-tight" style={serif}>
-            {profile?.username ? `@${profile.username}` : displayName(profile ?? { nickname: "", username: null })}
-          </h1>
-          <p className="truncate text-xs" style={{ ...serif, color: "#6b675f" }}>
-            {profile?.nickname}
-            {profile?.bio ? ` · ${profile.bio.replace(/\s+/g, " ")}` : ""}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-end gap-3">
-          <span className="text-sm" style={numeric} aria-label={`게시물 ${posts.length}개`}>
-            {String(posts.length).padStart(2, "0")}
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="truncate font-medium">{profile?.username ? `@${profile.username}` : ""}</span>
+            {!editing && (
+              <Link href="/profile" className="flex-none border px-3 py-1 text-sm" style={{ borderColor: INK }}>
+                프로필 수정
+              </Link>
+            )}
           </span>
-          {!editing && posts.length > 1 && (
-            <button onClick={startEdit} className="border px-3 py-1 text-sm" style={{ borderColor: INK }}>
-              정리
-            </button>
-          )}
+        </div>
+        <h1 className="mt-2 break-words text-[56px] font-medium leading-[0.92] tracking-[-1.5px] sm:text-[64px]">
+          {displayName(profile ?? { nickname: "", username: null })}
+          <br />
+          feed
+        </h1>
+        {profile?.bio && <p className="mt-2 text-[13px]" style={{ color: GRAY }}>{profile.bio.replace(/\s+/g, " ")}</p>}
+        <div className="mt-3 flex items-baseline justify-between text-[15px]">
+          <span>© {new Date().getFullYear()}</span>
+          <span className="flex items-baseline gap-3" aria-label={`게시물 ${posts.length}개`}>
+            {posts.length} posts
+            {!editing && posts.length > 1 && (
+              <button onClick={startEdit} className="border px-3 py-1 text-sm" style={{ borderColor: INK }}>
+                정리
+              </button>
+            )}
+          </span>
         </div>
       </header>
+
+      {!editing && posts.length > 0 && (
+        <nav className="mx-5 mt-3 flex gap-5 border-y" aria-label="보기 방식">
+          {VIEW_MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setMode(m.id)}
+              aria-pressed={mode === m.id}
+              className={`h-11 text-base underline-offset-[5px] ${mode === m.id ? "underline" : ""}`}
+              style={{ color: mode === m.id ? INK : "#767676" }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </nav>
+      )}
 
       {posts.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-sm">
@@ -180,6 +209,35 @@ function Inner() {
             듀얼샷 만들러 가기
           </Link>
         </div>
+      ) : !editing && mode === "num" ? (
+        <ul className="grid grid-cols-2 gap-x-3 gap-y-5 px-5 pb-6 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {posts.map((p, i) => (
+            <li key={p.id}>
+              <button onClick={() => setOpen(p)} className="flex w-full flex-col gap-1.5 text-left text-[13px]" aria-label={`${pad2(i + 1)}번 게시물 열기`}>
+                <span>({pad2(i + 1)})</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.imageUrl} alt={p.caption || "듀얼샷"} className="aspect-[3/4] w-full bg-[#F2F2F2] object-cover" />
+                {p.caption && <span className="truncate" style={{ color: GRAY }}>{p.caption}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : !editing && mode === "strip" ? (
+        <ul className="mx-auto flex w-full max-w-3xl flex-col px-5 pb-6 pt-1">
+          {posts.map((p, i) => (
+            <li key={p.id} className="border-b" style={{ borderColor: "#E2E2E2" }}>
+              <button onClick={() => setOpen(p)} className="flex w-full items-start gap-3 py-2.5 text-left text-sm" aria-label={`${pad2(i + 1)}번 게시물 열기`}>
+                <span className="w-7 flex-none text-[13px]">{pad2(i + 1)}</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.imageUrl} alt={p.caption || "듀얼샷"} className="aspect-[3/4] w-[120px] flex-none bg-[#F2F2F2] object-cover" />
+                <span className="min-w-0">
+                  <span className="block truncate">{p.caption || " "}</span>
+                  <span className="mt-1 block text-xs" style={{ color: GRAY }}>{fmtDate(p.created_at)}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       ) : (
         <ul
           className={`grid ${
@@ -189,21 +247,6 @@ function Inner() {
           } items-start`}
           style={{ gap: 3, paddingBottom: editing ? 150 : 24 }}
         >
-          {!editing && profile && (
-            <li>
-              <Link href="/profile" aria-label="프로필 수정" className="relative block aspect-[3/4] overflow-hidden bg-[#E4E0D8]">
-                {profile.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="flex h-full items-center justify-center text-5xl" style={serif}>
-                    {displayName(profile).slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-                <span className="absolute bottom-1 left-1 bg-[#F3F1EC] px-1.5 py-0.5 text-[10px]">프로필</span>
-              </Link>
-            </li>
-          )}
           {(dragBase && draft
             ? dragBase.map((id) => draft.find((p) => p.id === id)!)
             : list
@@ -219,12 +262,12 @@ function Inner() {
               {editing ? (
                 <div
                   onClick={() => setSelected(p.id)}
-                  className="relative aspect-[3/4] overflow-hidden bg-[#E4E0D8]"
-                  style={{ outline: selected === p.id ? `2px solid ${ACCENT}` : "none", outlineOffset: -2 }}
+                  className="relative aspect-[3/4] overflow-hidden bg-[#F2F2F2]"
+                  style={{ outline: selected === p.id ? `2px solid ${INK}` : "none", outlineOffset: -2 }}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.imageUrl} alt={p.caption || "듀얼샷"} draggable={false} className="h-full w-full object-cover" />
-                  <span className="absolute left-1 top-1 bg-[#F3F1EC] px-1 text-[10px]" style={numeric}>
+                  <span className="absolute left-1 top-1 bg-white px-1 text-[10px]" style={numeric}>
                     {i + 1}
                   </span>
                   <button
@@ -233,7 +276,7 @@ function Inner() {
                     onPointerMove={onHandleMove}
                     onPointerUp={onHandleUp}
                     onPointerCancel={onHandleUp}
-                    className="absolute bottom-0 right-0 flex h-10 w-10 items-center justify-center bg-[#F3F1EC] text-lg"
+                    className="absolute bottom-0 right-0 flex h-10 w-10 items-center justify-center bg-white text-lg"
                     style={{ touchAction: "none", cursor: "grab" }}
                   >
                     ⠿
@@ -243,16 +286,8 @@ function Inner() {
                 <>
                   <button onClick={() => setOpen(p)} className="block w-full" aria-label={`${fmtDate(p.created_at)} 게시물 열기`}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={p.imageUrl} alt={p.caption || "듀얼샷"} className="aspect-[3/4] w-full bg-[#E4E0D8] object-cover" />
+                    <img src={p.imageUrl} alt={p.caption || "듀얼샷"} className="aspect-[3/4] w-full bg-[#F2F2F2] object-cover" />
                   </button>
-                  <div className="px-1 pb-2 pt-1 text-[11px] leading-snug">
-                    <span style={numeric}>{fmtDate(p.created_at)}</span>
-                    {p.caption && (
-                      <span className="block truncate" style={{ ...serif, color: "#6b675f" }}>
-                        {p.caption}
-                      </span>
-                    )}
-                  </div>
                 </>
               )}
             </li>
@@ -264,7 +299,7 @@ function Inner() {
       </div>
 
       {editing && (
-        <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col gap-2 border-t p-3 text-sm" style={{ background: "#F3F1EC", borderColor: INK }}>
+        <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col gap-2 border-t p-3 text-sm" style={{ background: "#FFFFFF", borderColor: INK }}>
           <fieldset disabled className="flex items-center gap-2 text-xs opacity-70">
             <legend className="sr-only">순서 적용 범위</legend>
             <span>적용 범위</span>
@@ -321,7 +356,7 @@ function Inner() {
               onClick={commit}
               disabled={saving}
               className="flex-1 py-2 text-white disabled:opacity-60"
-              style={{ background: ACCENT }}
+              style={{ background: INK }}
             >
               {saving ? "저장하는 중..." : changed ? "순서 저장" : "완료"}
             </button>
@@ -330,27 +365,12 @@ function Inner() {
       )}
 
       {open && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center" role="dialog" aria-modal="true" aria-label="게시물">
-          <button aria-label="닫기" className="absolute inset-0 bg-black/50" onClick={closeSheet} />
-          <div className="relative max-h-[92vh] w-full max-w-md overflow-y-auto" style={{ background: "#F3F1EC" }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={open.imageUrl} alt={open.caption || "듀얼샷"} className="w-full" />
-            <div className="flex flex-col gap-1 p-4">
-              <div className="flex items-baseline justify-between text-xs" style={{ color: "#6b675f" }}>
-                <span style={numeric}>{fmtDate(open.created_at)}</span>
-                <span>{VISIBILITY_LABEL[open.visibility]}</span>
-              </div>
-              {open.caption && (
-                <p className="whitespace-pre-wrap text-base leading-relaxed" style={serif}>
-                  {open.caption}
-                </p>
-              )}
-            </div>
-            <button onClick={closeSheet} autoFocus className="sticky bottom-0 w-full border-t py-3 text-sm" style={{ background: "#F3F1EC", borderColor: INK }}>
-              닫기
-            </button>
-          </div>
-        </div>
+        <PostViewer
+          posts={posts}
+          startId={open.id}
+          handle={profile?.username ? `@${profile.username}` : displayName(profile ?? { nickname: "", username: null })}
+          onClose={closeViewer}
+        />
       )}
     </div>
   );

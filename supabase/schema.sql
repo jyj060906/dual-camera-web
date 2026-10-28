@@ -260,8 +260,10 @@ create policy "delete own avatar"
 
 -- ───────────────────────── 게시물(내 피드) ─────────────────────────
 -- 합성이 끝난 듀얼샷 한 장(두 사진 + 프레임이 이미 합쳐진 이미지)을 게시물 하나로 저장한다.
--- 아직 정하지 않은 것(다른 사람이 보는 범위, 순서 적용 화면, 수정·삭제 규칙)은 규칙을 만들지 않았다.
---  · 읽기: 본인 것만. 친구·팔로워가 보는 규칙은 공개 범위 우선순위가 정해진 뒤에 추가한다.
+-- 아직 정하지 않은 것(순서 적용 화면, 수정·삭제 규칙, 친구공개·비공개 계정의 열람 범위)은 규칙을 만들지 않았다.
+--  · 읽기: 본인 것 + "공개 계정(is_private = false)의 공개(public) 게시물"을 로그인한 누구나.
+--    친구공개 게시물을 친구에게, 비공개 계정의 공개 게시물을 누구에게 보일지, 로그인하지 않은 사람이 볼 수 있는지는
+--    우선순위가 정해진 뒤에 추가한다(그 전까지는 모두 막혀 있다).
 --  · 삭제: 정책 없음(삭제 후 기록 보관 방식이 정해지지 않았다).
 --  · 수정: 순서(sort_order)만 가능. 그 밖의 항목은 수정 허용 범위가 정해질 때까지 막아 둔다.
 create table if not exists public.posts (
@@ -348,3 +350,116 @@ drop policy if exists "upload own post images" on storage.objects;
 create policy "upload own post images"
   on storage.objects for insert to authenticated
   with check (bucket_id = 'posts' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ───────────────────────── 좋아요·댓글 ─────────────────────────
+-- 게시물 전체에 대한 좋아요와 댓글이다(함께 듀얼의 참여 사진 단위가 아니다).
+-- "이 게시물을 읽을 수 있는 사람"만 달 수 있다: exists (select 1 from posts ...)는 posts의 읽기 규칙을 그대로 따른다.
+-- 지금 posts는 본인만 읽을 수 있으므로 본인 게시물에만 달린다. 친구·팔로워가 보는 범위가 정해져
+-- posts 읽기 규칙이 넓어지면 이 규칙도 함께 넓어진다.
+create table if not exists public.post_likes (
+  post_id uuid not null references public.posts (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (post_id, user_id)
+);
+
+alter table public.post_likes enable row level security;
+
+drop policy if exists "read likes of readable posts" on public.post_likes;
+create policy "read likes of readable posts" on public.post_likes for select to authenticated
+  using (exists (select 1 from public.posts p where p.id = post_id));
+
+drop policy if exists "like a readable post" on public.post_likes;
+create policy "like a readable post" on public.post_likes for insert to authenticated
+  with check (user_id = auth.uid() and exists (select 1 from public.posts p where p.id = post_id));
+
+drop policy if exists "remove my like" on public.post_likes;
+create policy "remove my like" on public.post_likes for delete to authenticated
+  using (user_id = auth.uid());
+
+-- 댓글. 삭제해도 내용은 기록으로 남긴다(행을 지우지 않고 deleted_at만 채운다).
+--  · 삭제 기록은 작성자 본인만 읽을 수 있고, 앱은 deleted_at이 빈 댓글만 보여 준다.
+--  · 행을 완전히 지우는 정책은 없다. 기록 삭제는 개발자(서비스 키·대시보드)만 할 수 있다.
+--  · 수정 전 내용은 따로 보관하지 않는다(수정 이력을 남길지는 아직 정해지지 않았다).
+--  · 게시물·계정을 지울 때 댓글이 같이 지워지지 않도록 on delete 동작을 두지 않았다(지우려 하면 막힌다).
+create table if not exists public.post_comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.posts (id),
+  author uuid not null references public.profiles (id),
+  body text not null check (char_length(btrim(body)) between 1 and 500),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+create index if not exists post_comments_post_idx on public.post_comments (post_id, created_at);
+
+alter table public.post_comments enable row level security;
+
+drop policy if exists "read comments of readable posts" on public.post_comments;
+create policy "read comments of readable posts" on public.post_comments for select to authenticated
+  using (
+    exists (select 1 from public.posts p where p.id = post_id)
+    and (deleted_at is null or author = auth.uid())
+  );
+
+drop policy if exists "comment on a readable post" on public.post_comments;
+create policy "comment on a readable post" on public.post_comments for insert to authenticated
+  with check (
+    author = auth.uid() and deleted_at is null
+    and exists (select 1 from public.posts p where p.id = post_id)
+  );
+
+drop policy if exists "edit or delete my comment" on public.post_comments;
+create policy "edit or delete my comment" on public.post_comments for update to authenticated
+  using (author = auth.uid() and deleted_at is null)
+  with check (author = auth.uid());
+
+-- 바꿀 수 있는 것은 본문(수정)과 deleted_at(삭제)뿐이다. 삭제는 되돌릴 수 없고, 삭제하면서 본문을 바꿀 수 없다.
+-- updated_at과 deleted_at은 서버 시각으로 채운다.
+create or replace function public.post_comments_guard() returns trigger
+language plpgsql as $$
+begin
+  if new.id <> old.id or new.post_id <> old.post_id or new.author <> old.author
+     or new.created_at <> old.created_at then
+    raise exception 'only body can be edited' using errcode = '42501';
+  end if;
+  if old.deleted_at is not null then
+    raise exception 'a deleted comment cannot be changed' using errcode = '42501';
+  end if;
+  if new.deleted_at is not null then
+    if new.body <> old.body then
+      raise exception 'body cannot change while deleting' using errcode = '42501';
+    end if;
+    new.deleted_at := now();
+    new.updated_at := old.updated_at;
+  elsif new.body <> old.body then
+    new.updated_at := now();
+  else
+    new.updated_at := old.updated_at;
+  end if;
+  return new;
+end $$;
+drop trigger if exists post_comments_guard on public.post_comments;
+create trigger post_comments_guard before update on public.post_comments
+  for each row execute function public.post_comments_guard();
+
+-- ───────────────────────── 다른 사람의 공개 게시물 열람 ─────────────────────────
+-- 공개 계정의 공개 게시물은 로그인한 누구나 볼 수 있다. 계정이 비공개이거나 게시물이 친구공개·비공개이면 본인만 본다.
+-- (좋아요·댓글 규칙은 "이 게시물을 읽을 수 있는가"를 따라가므로 이 규칙으로 함께 넓어진다.)
+create index if not exists posts_image_path_idx on public.posts (image_path);
+
+drop policy if exists "read public posts of public accounts" on public.posts;
+create policy "read public posts of public accounts" on public.posts for select to authenticated
+  using (
+    visibility = 'public'
+    and exists (select 1 from public.profiles pr where pr.id = author and pr.is_private = false)
+  );
+
+-- 이미지 파일도 같은 기준이다: 게시물을 읽을 수 있으면(위 규칙 또는 본인) 그 이미지를 읽을 수 있다.
+drop policy if exists "read images of readable posts" on storage.objects;
+create policy "read images of readable posts"
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'posts'
+    and exists (select 1 from public.posts p where p.image_path = objects.name)
+  );
