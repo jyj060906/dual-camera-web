@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>게시물 상세</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;500;700&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+
+    <header class="topbar" style="padding-left: 8px; padding-right: 20px">
+      <a href="index.html" style="min-height: 44px; padding: 0 12px; display: flex; align-items: center; text-decoration: none">← back</a>
+      <span class="handle">@your.handle</span>
+    </header>
+
+    <main class="post-main">
+      <h1 class="big-title post-title">오늘
+모먹엇게~</h1>
+
+      <div class="dual">
+        <div class="ph front">[앞카메라]</div>
+        <div class="ph" style="background: #BDBAB4">[뒷카메라]</div>
+      </div>
+
+      <div class="stamp-row">
+        <span>© 2026.10.27</span>
+        <span>15:23 / front + back</span>
+      </div>
+
+      <section aria-label="셀카 반응">
+        <span class="label">셀카 반응 ([N])</span>
+        <div class="reactions">
+          <span class="ph" style="background: #E6E2DC">[A]</span>
+          <span class="ph" style="background: #CFCBC4">[B]</span>
+          <span class="ph" style="background: #D9D2C7">[C]</span>
+          <button aria-label="셀카로 반응하기">+</button>
+        </div>
+      </section>
+
+      <div class="comments" id="comments">
+        <div class="comment"><span class="who">[친구1]</span><span>[댓글 내용]</span></div>
+        <div class="comment"><span class="who">나</span><span>[내 답글]</span></div>
+      </div>
+    </main>
+
+    <form class="composer" id="composer">
+      <label for="cmt" class="sr-only">댓글</label>
+      <input id="cmt" class="line-input" placeholder="한마디 쓰기" autocomplete="off">
+      <button type="submit" class="btn-black">보내기</button>
+    </form>
+  </div>
+
+  <script>
+    // 댓글 보내기: 입력한 글을 목록 맨 아래에 추가
+    const form = document.getElementById('composer');
+    const input = document.getElementById('cmt');
+    const list = document.getElementById('comments');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      const row = document.createElement('div');
+      row.className = 'comment';
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = '나';
+      const body = document.createElement('span');
+      body.textContent = text;
+      row.append(who, body);
+      list.appendChild(row);
+      input.value = '';
+    });
+  </script>
+</body>
+</html>
