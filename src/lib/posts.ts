@@ -23,13 +23,16 @@ function must<T>(res: { data: T | null; error: { message: string } | null }): T 
   return res.data as T;
 }
 
-// 내 게시물을 내가 정한 순서대로 가져온다. 새 글은 맨 앞이다(기본 정렬은 확정 전의 임시 값).
-export async function listMyPosts(): Promise<Post[]> {
+// authorId 사용자의 게시물을 그 사람이 정한 순서대로 가져온다. 새 글은 맨 앞이다(기본 정렬은 확정 전의 임시 값).
+// 반드시 author로 걸러야 한다: 다른 사람의 공개 게시물도 읽을 수 있게 되었기 때문에, 걸러내지 않으면 내 피드에 섞인다.
+// 내 프로필이면 내 게시물 전부, 다른 사람이면 DB 규칙에 따라 볼 수 있는 것(공개 계정의 공개 게시물)만 온다.
+export async function listPostsBy(authorId: string): Promise<Post[]> {
   const sb = getSupabase();
   const rows = must(
     await sb
       .from("posts")
       .select("id, caption, visibility, created_at, image_path")
+      .eq("author", authorId)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false }),
   );

@@ -12,6 +12,36 @@ export const FRAMES: { id: Frame; label: string; aspect: number }[] = [
   { id: "polaroid", label: "폴라로이드", aspect: 4 / 5 },
 ];
 
+// 이미지 전체의 구성. "overlay"는 큰 사진 위에 작은 사진을 얹는 기존 방식이고,
+// 나머지는 feed-app 시안의 프레임으로 두 사진을 빈칸 없이 모두 배치한다.
+// (작은 사진 모양인 Frame과는 별개다.) 배치는 composition.ts에서 계산해 미리보기와 저장 이미지가 함께 쓴다.
+export type Composition = "overlay" | "grid" | "num" | "type" | "stamp";
+
+export const COMPOSITIONS: { id: Composition; label: string }[] = [
+  { id: "overlay", label: "겹치기" },
+  { id: "grid", label: "그리드" },
+  { id: "num", label: "번호" },
+  { id: "type", label: "큰 글씨" },
+  { id: "stamp", label: "©" },
+];
+
+// 텍스트 스탬프: 누르면 텍스트로 추가된다.
+export const STAMPS: { id: string; label: string; text: () => string }[] = [
+  { id: "copyright", label: "© 2026", text: () => `© ${new Date().getFullYear()}` },
+  { id: "number", label: "(01)", text: () => "(01)" },
+  { id: "frontback", label: "front / back", text: () => "front / back" },
+  { id: "star", label: "★", text: () => "★" },
+  {
+    id: "date",
+    label: "날짜",
+    text: () => {
+      const d = new Date();
+      const p = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+    },
+  },
+];
+
 export const STAR_CLIP =
   "polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)";
 
@@ -50,6 +80,19 @@ export type Border = {
 };
 
 export const DEFAULT_BORDER: Border = { on: false, thickness: 3, color: "#ffffff" };
+
+// 사진 한 장의 변형. 사진 틀(큰 사진은 화면 전체, 작은 사진은 프레임 안) 안에서 사진 자체를 움직인다.
+// x·y: 틀 너비·높이 대비 이동 %, sx·sy: 가로·세로 배율(1 = 틀에 꽉 채움). 작은 사진은 가로·세로가 따로 바뀌지만, 큰 사진은 항상 sx = sy(비율 유지)다.
+export type Xform = { x: number; y: number; sx: number; sy: number };
+export const NO_XFORM: Xform = { x: 0, y: 0, sx: 1, sy: 1 };
+export const XFORM_SCALE_MIN = 0.2;
+export const XFORM_SCALE_MAX = 6;
+// inFrame이 true이면 이동을 틀 크기 기준(cqw·cqh)으로 쓴다(PhotoImg). 아니면 요소 자신의 크기 기준(%)이다.
+export const xformCss = (t: Xform, inFrame = false) =>
+  inFrame
+    ? `translate(${t.x}cqw, ${t.y}cqh) scale(${t.sx}, ${t.sy})`
+    : `translate(${t.x}%, ${t.y}%) scale(${t.sx}, ${t.sy})`;
+export const isNoXform = (t: Xform) => t.x === 0 && t.y === 0 && t.sx === 1 && t.sy === 1;
 
 export type Adjust = { brightness: number; contrast: number; saturate: number };
 export const NO_ADJUST: Adjust = { brightness: 100, contrast: 100, saturate: 100 };

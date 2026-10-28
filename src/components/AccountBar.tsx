@@ -12,17 +12,17 @@ export default function AccountBar() {
   if (status === "loading") return <span className="h-9 w-9" aria-hidden />;
   if (status === "out") {
     return (
-      <Link href="/login" className="rounded-full border px-3 py-1 text-sm">
+      <Link href="/login" className="rounded-none border px-3 py-1 text-sm">
         로그인
       </Link>
     );
   }
   return (
     <nav className="flex items-center gap-2">
-      <Link href="/feed" className="rounded-full border px-3 py-1 text-sm text-zinc-600">
+      <Link href="/feed" className="rounded-none border px-3 py-1 text-sm text-zinc-600">
         내 피드
       </Link>
-      <Link href="/friends" aria-label="친구" title="친구" className="rounded-full p-2 text-zinc-600">
+      <Link href="/friends" aria-label="친구" title="친구" className="rounded-none p-2 text-zinc-600">
         <UsersIcon className="h-5 w-5" />
       </Link>
       <Link href="/profile" aria-label="내 프로필" title="내 프로필">

@@ -25,7 +25,7 @@ export default function AuthCallback() {
     return (
       <div className="flex flex-col gap-3 text-sm">
         <p className="text-red-500">로그인하지 못했어요: {error}</p>
-        <Link href="/login" className="rounded-full border py-2 text-center">
+        <Link href="/login" className="rounded-none border py-2 text-center">
           다시 시도하기
         </Link>
       </div>

@@ -1,26 +1,64 @@
 @import "tailwindcss";
 
+/* 디자인 기준: feed-app 시안(흑백 미니멀). 색·글꼴·선은 여기서 한 번에 정한다. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --black: #000000;
+  --white: #ffffff;
+  --gray-text: #555555;
+  --gray-off: #767676;
+  --gray-line: #e2e2e2;
+  --gray-soft: #f2f2f2;
+  --gap: 3px;
+  --background: var(--white);
+  --foreground: var(--black);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-archivo-narrow), var(--font-plex-kr), sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@theme {
+  /* 시안은 직각 모서리. rounded-full(원형 아바타 등)은 그대로 쓴다. */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
+
+  /* 강조색(분홍)을 시안의 흑백으로 바꾼다. 선택 상태는 연회색 바탕 + 검정 선으로 보인다. */
+  --color-pink-50: #f2f2f2;
+  --color-pink-100: #e2e2e2;
+  --color-pink-500: #000000;
+  --color-pink-600: #000000;
+  --color-pink-700: #000000;
+
+  --color-zinc-50: #f2f2f2;
+  --color-zinc-100: #f2f2f2;
+  --color-zinc-200: #e2e2e2;
+  --color-zinc-400: #767676;
+  --color-zinc-500: #767676;
+  --color-zinc-600: #555555;
+  --color-zinc-700: #000000;
+  --color-zinc-800: #000000;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  /* 시안의 기본 선은 1px 검정이다. */
+  *,
+  ::before,
+  ::after {
+    border-color: var(--black);
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-archivo-narrow), var(--font-plex-kr), sans-serif;
+  }
 }
