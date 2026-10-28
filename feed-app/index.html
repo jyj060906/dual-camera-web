@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>내 피드</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;500;700&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+
+    <header class="topbar">
+      <span class="handle">@your.handle</span>
+      <div style="display: flex">
+        <a class="icon-btn" href="decorate.html" aria-label="사진 추가" style="text-decoration: none">+</a>
+        <button class="icon-btn" aria-label="메뉴">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h18M3 16h18"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="profile">
+      <h1 class="big-title">[이름]
+feed
+archive</h1>
+      <div class="meta-row">
+        <span>© 2026</span>
+        <span><span id="post-count">0</span> posts / [N] friends</span>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="보기 방식">
+      <button class="tab on" data-mode="grid" aria-pressed="true">그리드</button>
+      <button class="tab" data-mode="num" aria-pressed="false">번호</button>
+      <button class="tab" data-mode="strip" aria-pressed="false">스트립</button>
+    </nav>
+
+    <!-- 게시물은 js/feed.js 가 채워 넣어요 -->
+    <main class="feed" id="feed"></main>
+
+    <nav class="bottom-nav" aria-label="주요 메뉴">
+      <a href="index.html" class="current">피드</a>
+      <a href="decorate.html" class="shoot">찍기 (앞+뒤)</a>
+      <a href="#">친구</a>
+    </nav>
+  </div>
+
+  <script src="js/feed.js"></script>
+</body>
+</html>
