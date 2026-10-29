@@ -12,7 +12,9 @@ import {
   Playfair_Display,
 } from "next/font/google";
 import "./globals.css";
+import { Suspense } from "react";
 import { AuthProvider } from "@/lib/auth";
+import BottomNav from "@/components/BottomNav";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -82,7 +84,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${archivoNarrow.variable} ${plexKr.variable} ${geistSans.variable} ${geistMono.variable} ${notoSansKr.variable} ${notoSerifKr.variable} ${blackHanSans.variable} ${anton.variable} ${bebasNeue.variable} ${playfair.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          {/* 현재 주소(usePathname)는 요청 때 정해지는 값이라 Suspense로 감싼다 */}
+          <Suspense fallback={null}>
+            <BottomNav />
+          </Suspense>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -6,6 +6,9 @@ import { useAuth } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 import { listPostsBy, saveOrder, type Post } from "@/lib/posts";
 import { displayName } from "./Avatar";
+import MemoryCalendar from "./MemoryCalendar";
+import { useMounted } from "@/lib/useMounted";
+import { useFriendCount } from "./useFriendCount";
 import PostViewer from "./PostViewer";
 import RequireLogin from "./RequireLogin";
 
@@ -15,8 +18,9 @@ const GRAY = "#555555";
 const serif = {};
 const numeric = {};
 
-type ViewMode = "grid" | "num" | "strip";
+type ViewMode = "calendar" | "grid" | "num" | "strip";
 const VIEW_MODES: { id: ViewMode; label: string }[] = [
+  { id: "calendar", label: "달력" },
   { id: "grid", label: "그리드" },
   { id: "num", label: "번호" },
   { id: "strip", label: "스트립" },
@@ -37,12 +41,14 @@ function move<T>(list: T[], from: number, to: number): T[] {
 }
 
 function Inner() {
+  const mounted = useMounted();
   const { profile, user } = useAuth();
   const userId = user?.id ?? null;
+  const friendCount = useFriendCount(userId);
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [open, setOpen] = useState<Post | null>(null);
-  const [mode, setMode] = useState<ViewMode>("grid");
+  const [mode, setMode] = useState<ViewMode>("calendar");
 
   // 배치 편집 상태: draft가 null이 아니면 편집 중
   const [draft, setDraft] = useState<Post[] | null>(null);
@@ -155,9 +161,9 @@ function Inner() {
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 flex-col">
       <header className="px-5 pt-4">
         <div className="flex items-center justify-between gap-3 text-[15px]">
-          <Link href="/" className="min-h-11 content-center">
-            ← 사진 만들기
-          </Link>
+          <span className="min-h-11 content-center" style={{ color: GRAY }}>
+            나
+          </span>
           <span className="flex min-w-0 items-center gap-3">
             <span className="truncate font-medium">{profile?.username ? `@${profile.username}` : ""}</span>
             {!editing && (
@@ -174,9 +180,17 @@ function Inner() {
         </h1>
         {profile?.bio && <p className="mt-2 text-[13px]" style={{ color: GRAY }}>{profile.bio.replace(/\s+/g, " ")}</p>}
         <div className="mt-3 flex items-baseline justify-between text-[15px]">
-          <span>© {new Date().getFullYear()}</span>
+          <span>© {mounted ? new Date().getFullYear() : ""}</span>
           <span className="flex items-baseline gap-3" aria-label={`게시물 ${posts.length}개`}>
             {posts.length} posts
+            {friendCount !== null && (
+              <>
+                {" · "}
+                <Link href="/friends?tab=friends" className="underline underline-offset-4" aria-label={`친구 ${friendCount}명, 친구 목록 보기`}>
+                  친구 {friendCount}명
+                </Link>
+              </>
+            )}
             {!editing && posts.length > 1 && (
               <button onClick={startEdit} className="border px-3 py-1 text-sm" style={{ borderColor: INK }}>
                 정리
@@ -205,10 +219,12 @@ function Inner() {
       {posts.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-sm">
           <p style={serif}>아직 올린 사진이 없어요.</p>
-          <Link href="/" className="border px-4 py-2" style={{ borderColor: INK }}>
+          <Link href="/shoot" className="border px-4 py-2" style={{ borderColor: INK }}>
             듀얼샷 만들러 가기
           </Link>
         </div>
+      ) : !editing && mode === "calendar" ? (
+        <MemoryCalendar posts={posts} onOpen={setOpen} />
       ) : !editing && mode === "num" ? (
         <ul className="grid grid-cols-2 gap-x-3 gap-y-5 px-5 pb-6 pt-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {posts.map((p, i) => (
@@ -299,7 +315,7 @@ function Inner() {
       </div>
 
       {editing && (
-        <div className="fixed inset-x-0 bottom-0 z-20 flex flex-col gap-2 border-t p-3 text-sm" style={{ background: "#FFFFFF", borderColor: INK }}>
+        <div className="fixed inset-x-0 bottom-0 z-30 flex flex-col gap-2 border-t p-3 text-sm" style={{ background: "#FFFFFF", borderColor: INK }}>
           <fieldset disabled className="flex items-center gap-2 text-xs opacity-70">
             <legend className="sr-only">순서 적용 범위</legend>
             <span>적용 범위</span>
@@ -367,6 +383,7 @@ function Inner() {
       {open && (
         <PostViewer
           posts={posts}
+          onDeleted={(id) => setPosts((cur) => cur && cur.filter((x) => x.id !== id))}
           startId={open.id}
           handle={profile?.username ? `@${profile.username}` : displayName(profile ?? { nickname: "", username: null })}
           onClose={closeViewer}

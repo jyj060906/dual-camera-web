@@ -132,6 +132,27 @@ export async function listFriendRequests(me: string) {
   return { incoming: pick(incomingIds), outgoing: pick(outgoingIds) };
 }
 
+// 어떤 사람의 친구 수(요청을 수락한 친구만).
+export async function countFriends(userId: string): Promise<number> {
+  const res = await getSupabase().rpc("friend_count", { uid: userId });
+  if (res.error) throw new Error(res.error.message);
+  return (res.data as number | null) ?? 0;
+}
+
+// 내가 받은 요청 중 아직 수락·거절하지 않은 개수(친구 요청 + 비공개 계정의 팔로우 요청). 홈의 알림 점에 쓴다.
+export const REQUESTS_CHANGED = "requests-changed";
+
+export async function countIncomingRequests(me: string): Promise<number> {
+  const sb = getSupabase();
+  const [f, p] = await Promise.all([
+    sb.from("friendships").select("requester", { count: "exact", head: true }).eq("status", "pending").eq("addressee", me),
+    sb.from("follows").select("follower", { count: "exact", head: true }).eq("status", "pending").eq("following", me),
+  ]);
+  if (f.error) throw new Error(f.error.message);
+  if (p.error) throw new Error(p.error.message);
+  return (f.count ?? 0) + (p.count ?? 0);
+}
+
 // ── 팔로우 ──
 
 export async function followUser(me: string, other: string): Promise<Status> {

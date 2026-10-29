@@ -46,12 +46,38 @@ export async function detectWide(stream: MediaStream, facing: Facing): Promise<W
   return null;
 }
 
+// 카카오톡·인스타그램 같은 앱 안의 브라우저(인앱 브라우저)와 안드로이드 웹뷰. 카메라나 로그인이 막히는 경우가 많다.
+export function isInAppBrowser(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /KAKAOTALK|Instagram|FBAN|FBAV|FB_IAB|NAVER\(inapp|DaumApps|Line\/|Snapchat|; wv\)|everytimeApp|Whale\/.*Mobile.*inapp/i.test(navigator.userAgent);
+}
+
+export type CameraProblem = { name: string; message: string; denied: boolean };
+
+// getUserMedia가 던진 오류를 화면에 보일 모양으로 바꾼다. 원인 파악을 위해 name과 message를 그대로 둔다.
+export function cameraProblem(e: unknown): CameraProblem {
+  const name = typeof e === "object" && e && "name" in e ? String((e as { name: unknown }).name) : "Error";
+  const message = typeof e === "object" && e && "message" in e ? String((e as { message: unknown }).message) : String(e);
+  return { name, message, denied: name === "NotAllowedError" || name === "SecurityError" };
+}
+
 // 카메라를 연다. wideLensId가 있으면 그 초광각 렌즈를, 없으면 방향(facing)에 맞는 기본 렌즈를 연다.
-export function openCamera(facing: Facing, wideLensId?: string): Promise<MediaStream> {
-  return navigator.mediaDevices.getUserMedia({
-    video: wideLensId ? { deviceId: { exact: wideLensId } } : { facingMode: { ideal: facing } },
-    audio: false,
-  });
+// 그 방향의 카메라가 없거나 조건이 맞지 않으면 아무 카메라나 열어 본다(권한 거부는 다시 시도하지 않는다).
+export async function openCamera(facing: Facing, wideLensId?: string): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    const err = new Error("이 브라우저는 카메라를 지원하지 않거나, https 주소가 아니에요.");
+    err.name = "NotSupportedError";
+    throw err;
+  }
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: wideLensId ? { deviceId: { exact: wideLensId } } : { facingMode: { ideal: facing } },
+      audio: false,
+    });
+  } catch (e) {
+    if (cameraProblem(e).denied) throw e;
+    return navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  }
 }
 
 // "zoom" 방식의 배율을 카메라에 적용한다.

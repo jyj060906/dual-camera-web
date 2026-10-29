@@ -12,6 +12,7 @@ import {
   listFriends,
   removeFollower,
   removeFriendship,
+  REQUESTS_CHANGED,
   searchProfiles,
   unfollowUser,
   type Person,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/social";
 import Avatar, { displayName } from "./Avatar";
 import RequireLogin from "./RequireLogin";
+import Tabs from "./Tabs";
 
 type TabId = "friends" | "requests" | "following" | "followers";
 
@@ -71,6 +73,7 @@ function useList<T>(load: () => Promise<T>, deps: unknown[]) {
     try {
       await fn();
       setVersion((v) => v + 1);
+      window.dispatchEvent(new Event(REQUESTS_CHANGED)); // 홈의 알림 점이 바로 줄어든다
     } catch (e) {
       setError(e instanceof Error ? e.message : "문제가 생겼어요.");
     } finally {
@@ -92,7 +95,19 @@ function FriendsTab({ me }: { me: string }) {
     <>
       <ErrorText text={error} />
       {data.length === 0 ? (
-        <Empty text="아직 친구가 없어요. 위에서 아이디로 찾아보세요." />
+        <div className="flex flex-col items-center gap-3 py-8 text-sm">
+          <p>아직 친구가 없어요</p>
+          <button
+            onClick={() => {
+              const input = document.getElementById("friend-search");
+              input?.scrollIntoView({ block: "center" });
+              input?.focus();
+            }}
+            className="h-11 bg-black px-5 text-white"
+          >
+            친구 찾기
+          </button>
+        </div>
       ) : (
         <ul className="divide-y">
           {data.map((p) => (
@@ -258,12 +273,16 @@ function Search({ me }: { me: string }) {
         <input
           value={term}
           onChange={(e) => setTerm(e.target.value.toLowerCase())}
+          id="friend-search"
           placeholder="아이디로 찾기"
           autoCapitalize="none"
           spellCheck={false}
           className="min-w-0 flex-1 rounded-lg border px-3 py-2"
         />
-        <button disabled={busy || !term.trim()} className="rounded-lg bg-pink-500 px-4 text-white disabled:opacity-50">
+        <button
+          disabled={busy || !term.trim()}
+          className={`px-4 font-medium text-white ${term.trim() ? "bg-black" : "bg-[#767676]"} ${busy ? "opacity-60" : ""}`}
+        >
           검색
         </button>
       </form>
@@ -312,26 +331,16 @@ function ShareProfile({ username }: { username: string }) {
 }
 
 function Inner({ me, username }: { me: string; username: string | null }) {
-  const [tab, setTab] = useState<TabId>("friends");
+  // 홈의 사람 아이콘에서 들어오면(?tab=requests) 요청 탭을 바로 연다. 이 화면은 로그인 확인 뒤에 그려져서 브라우저에서만 만들어진다.
+  const [tab, setTab] = useState<TabId>(() => {
+    const t = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("tab");
+    return TABS.find((x) => x.id === t)?.id ?? "friends";
+  });
   return (
     <div className="flex flex-col gap-4">
       {username && <ShareProfile username={username} />}
       <Search me={me} />
-      <div role="tablist" className="grid grid-cols-4 gap-1 rounded-xl bg-zinc-100 p-1 text-sm dark:bg-zinc-800">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={`rounded-lg py-2 ${
-              tab === t.id ? "bg-white font-medium text-pink-600 shadow-sm dark:bg-zinc-700" : "text-zinc-500"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={TABS} value={tab} onChange={setTab} />
       {tab === "friends" && <FriendsTab me={me} />}
       {tab === "requests" && <RequestsTab me={me} />}
       {tab === "following" && <FollowingTab me={me} />}

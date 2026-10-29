@@ -5,11 +5,15 @@ import { TEXTURES, TextureLayers, type TextureId } from "./textures";
 import { AdjustIcon, LayoutIcon, SaveIcon, TextIcon } from "./icons";
 import CompositionBoard from "./CompositionBoard";
 import PublishPanel from "./PublishPanel";
+import CameraHelp from "./CameraHelp";
 import {
   applyZoom,
   detectWide,
   digitalZoomOf,
   openCamera,
+  cameraProblem,
+  isInAppBrowser,
+  type CameraProblem,
   usesWideLens,
   zoomChoices,
   type Facing,
@@ -33,7 +37,7 @@ import {
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
   canvasToBlob,
-  downloadUrl,
+  saveFile,
   renderDualShot,
   timestampName,
 } from "@/lib/exportImage";
@@ -172,6 +176,9 @@ export default function DualShot() {
   // 지금 찍을 차례: 큰 사진이 비어 있으면 큰 사진, 아니면 작은 사진이다(다시 찍을 때도 같다).
   const slot: Slot = photos.big ? "small" : "big";
   const [error, setError] = useState<string | null>(null);
+  const [cameraErr, setCameraErr] = useState<CameraProblem | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const inApp = useSyncExternalStore(() => () => undefined, isInAppBrowser, () => false);
   const [frame, setFrame] = useState<Frame>("rounded");
   const [composition, setComposition] = useState<Composition>("overlay");
   const [caption, setCaption] = useState("");
@@ -240,12 +247,19 @@ export default function DualShot() {
   }
 
   const bothTaken = photos.big && photos.small;
+  // 두 장을 다 찍으면 먼저 확인 화면을 보여 준다. "꾸미기"를 눌러야 편집 화면으로 간다.
+  const [confirmed, setConfirmed] = useState(false);
+  const editing = Boolean(bothTaken) && confirmed;
   const aspect = smallAspect;
 
   const wide = wideMap[facing] ?? null;
   const zoom = zoomMap[facing] ?? 1;
   const wideLens = usesWideLens(wide, zoom);
   const digital = digitalZoomOf(wide, zoom);
+  // 플래시. 후면은 기기의 torch(손전등)를 켜고 끄고, 전면은 찍는 순간 화면을 흰색으로 밝힌다(스크린 플래시).
+  const [flashOn, setFlashOn] = useState(false);
+  const [torchOk, setTorchOk] = useState(false);
+  const [screenFlash, setScreenFlash] = useState(false);
   const zoomRef = useRef(zoom);
   useEffect(() => {
     zoomRef.current = zoom;
@@ -254,6 +268,7 @@ export default function DualShot() {
   useEffect(() => {
     if (bothTaken) return;
     let cancelled = false;
+    const videoEl = videoRef.current;
     streamRef.current?.getTracks().forEach((t) => t.stop());
 
     (async () => {
@@ -264,49 +279,84 @@ export default function DualShot() {
         return;
       }
       // 처음 켠 방향이면 광각을 지원하는지 알아낸다(권한을 받은 뒤라야 렌즈 이름이 보인다).
+      // 광각·줌은 덤이라서, 알아내다 실패해도 오류 없이 기본 카메라로 쓴다.
       let support = known;
-      if (support === undefined) {
-        support = await detectWide(stream, facing);
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
+      try {
+        if (support === undefined) {
+          support = await detectWide(stream, facing);
+          if (cancelled) {
+            stream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          setWideMap((m) => ({ ...m, [facing]: support }));
         }
-        setWideMap((m) => ({ ...m, [facing]: support }));
+        if (support?.kind === "zoom") await applyZoom(stream, Math.min(Math.max(zoomRef.current, support.min), support.max));
+      } catch {
+        support = null;
+        setWideMap((m) => ({ ...m, [facing]: null }));
       }
-      if (support?.kind === "zoom") await applyZoom(stream, Math.min(Math.max(zoomRef.current, support.min), support.max));
       if (cancelled) {
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
       streamRef.current = stream;
+      try {
+        const caps = stream.getVideoTracks()[0]?.getCapabilities?.() as (MediaTrackCapabilities & { torch?: boolean }) | undefined;
+        setTorchOk(facing === "environment" && Boolean(caps?.torch));
+      } catch {
+        setTorchOk(false);
+      }
       setError(null);
+      setCameraErr(null);
       if (videoRef.current) videoRef.current.srcObject = stream;
       liveSlotRef.current = slot;
-    })().catch(() =>
-      setError(
-        "카메라를 사용할 수 없습니다. 권한을 허용했는지, https 또는 localhost 주소인지 확인해 주세요.",
-      ),
-    );
+    })().catch((e) => {
+      if (!cancelled) setCameraErr(cameraProblem(e));
+    });
 
+    // 카메라를 끄거나 화면을 나갈 때 모든 track을 멈추고 미리보기에서도 뗀다. 안 그러면 다음에 켤 때 "카메라 사용 중" 오류가 난다.
     return () => {
       cancelled = true;
       liveSlotRef.current = null;
+      setTorchOk(false);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      if (videoEl) videoEl.srcObject = null;
     };
     // wideMap은 처음 한 번 읽는 값이라 의존성에 넣지 않는다(넣으면 감지 직후 카메라가 다시 켜진다).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slot, isMobile, bothTaken, facing, wideLens]);
+  }, [slot, isMobile, bothTaken, facing, wideLens, retryCount]);
 
   // 연속 줌 방식은 카메라를 다시 켜지 않고 배율만 바꾼다.
   useEffect(() => {
     if (wide?.kind === "zoom" && streamRef.current) void applyZoom(streamRef.current, zoom);
   }, [wide, zoom]);
 
+  // 후면 torch를 켜고 끈다. 지원하지 않거나 실패해도 오류 없이 넘어간다.
+  useEffect(() => {
+    if (!torchOk) return;
+    const track = streamRef.current?.getVideoTracks()[0];
+    void track?.applyConstraints({ advanced: [{ torch: flashOn } as MediaTrackConstraintSet] }).catch(() => undefined);
+  }, [flashOn, torchOk]);
+
   function setZoom(v: number) {
     setZoomMap((m) => ({ ...m, [facing]: v }));
   }
 
+  // 전면 카메라는 플래시가 켜져 있으면 화면을 잠깐 흰색으로 밝힌 뒤 찍는다.
   function capture() {
+    if (flashOn && facing === "user" && !screenFlash) {
+      setScreenFlash(true);
+      setTimeout(() => {
+        shoot();
+        setScreenFlash(false);
+      }, 350);
+      return;
+    }
+    shoot();
+  }
+
+  function shoot() {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
     const canvas = document.createElement("canvas");
@@ -324,9 +374,9 @@ export default function DualShot() {
     const other: Slot = slot === "big" ? "small" : "big";
     // 다음 사진은 반대쪽 카메라가 기본이다(바꾸려면 전환 버튼).
     setFacingPick(facing === "user" ? "environment" : "user");
-    // 직접 누른 촬영이면 진행 중이던 자동 촬영은 취소한다. 모바일에서 전면 사진을 먼저 찍었다면
-    // 다음 사진(후면)은 3초 뒤 자동으로 찍힌다.
-    setAuto(isMobile && facing === "user" && !photos[other] ? { slot: other, left: 3 } : null);
+    // 직접 누른 촬영이면 진행 중이던 자동 촬영은 취소한다. 모바일에서 첫 사진을 찍으면(전면이든 후면이든)
+    // 두 번째 사진은 반대쪽 카메라로 3초 뒤 자동으로 찍힌다. 마음에 안 들면 첫 사진만 다시 찍을 수 있다.
+    setAuto(isMobile && !photos[other] ? { slot: other, left: 3 } : null);
   }
 
   // 자동 촬영은 항상 최신 capture를 불러야 해서 ref에 담아 둔다.
@@ -367,6 +417,7 @@ export default function DualShot() {
     setRatio((r) => ({ ...r, [s]: 3 / 4 }));
     setFacingPick(null);
     setAuto(null);
+    setConfirmed(false); // 다시 찍은 뒤에는 확인 화면부터 다시 본다
   }
 
   function swap() {
@@ -446,9 +497,7 @@ export default function DualShot() {
     setSaveError(null);
     try {
       const blob = await renderBlob(format === "png" ? "image/png" : "image/jpeg");
-      const url = URL.createObjectURL(blob);
-      downloadUrl(url, `${timestampName()}.${format}`);
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      await saveFile(blob, `${timestampName()}.${format}`);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "저장하지 못했습니다.");
     } finally {
@@ -456,12 +505,34 @@ export default function DualShot() {
     }
   }
 
-  function saveOriginals() {
+  async function saveOriginals() {
     if (!photos.big || !photos.small) return;
-    const name = timestampName();
-    downloadUrl(photos.big, `${name}-original-big.jpg`);
-    // 브라우저가 한꺼번에 여러 파일을 내려받는 것을 막지 않도록 간격을 둔다.
-    setTimeout(() => downloadUrl(photos.small!, `${name}-original-small.jpg`), 400);
+    setSaveError(null);
+    try {
+      const name = timestampName();
+      const [big, small] = await Promise.all([
+        fetch(photos.big).then((r) => r.blob()),
+        fetch(photos.small).then((r) => r.blob()),
+      ]);
+      // 공유 시트는 파일 두 장을 한 번에 넘기고, 다운로드는 막히지 않게 간격을 둔다.
+      const files = [
+        new File([big], `${name}-original-big.jpg`, { type: big.type || "image/jpeg" }),
+        new File([small], `${name}-original-small.jpg`, { type: small.type || "image/jpeg" }),
+      ];
+      if (navigator.canShare?.({ files })) {
+        try {
+          await navigator.share({ files });
+          return;
+        } catch (e) {
+          if (e instanceof DOMException && e.name === "AbortError") return;
+        }
+      }
+      await saveFile(big, files[0].name);
+      await new Promise((r) => setTimeout(r, 400));
+      await saveFile(small, files[1].name);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "저장하지 못했습니다.");
+    }
   }
 
   function addFavorite(color: string) {
@@ -568,8 +639,8 @@ export default function DualShot() {
     const el = e.target as HTMLElement;
     // 글자가 아닌 곳을 누르면 글자 선택이 풀린다(삭제 X 버튼도 함께 사라진다).
     if (!el.closest("[data-text]")) setSelectedText(null);
-    // 이동 모드에서는 스크롤만, 글자는 자기 방식으로 끌린다. 텍스트 탭에서는 글자를 다루다 사진이 딸려 움직이지 않게 사진 조작을 끈다.
-    if (!stage || panMode || tab === "text" || el.closest("[data-text]")) return;
+    // 텍스트 탭에서는 글자를 다루다 사진이 딸려 움직이지 않게 사진 조작을 끈다.
+    if (!stage || tab === "text" || el.closest("[data-text]")) return;
     stage.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -666,11 +737,9 @@ export default function DualShot() {
   }
 
   // ── 편집 영역: 틀은 고정, 스크롤하면 사진이 움직인다 ──
-  // 선택한 사진(editSlot)을 밀면(터치로 빈 테두리 밀기, 이동 모드에서 밀기, 마우스 휠·트랙패드) 틀은 그대로이고
+  // 선택한 사진(editSlot)을 밀면(터치로 빈 테두리 밀기, 마우스 휠·트랙패드) 틀은 그대로이고
   // 사진이 틀 아래에서 움직인다. 틀 밖으로 잘린 부분이 틀 안으로 들어온다. 사진은 틀을 덮을 수 있는 범위 안에서만 움직인다.
   const viewportRef = useRef<HTMLDivElement>(null);
-  // 이동 모드: 켜면 사진 어디를 밀어도 편집이 아니라 사진 이동(스크롤)이 된다.
-  const [panMode, setPanMode] = useState(false);
   const panDrag = useRef<{ id: number; x: number; y: number } | null>(null);
   const panByRef = useRef<(dx: number, dy: number) => void>(() => undefined);
 
@@ -697,13 +766,12 @@ export default function DualShot() {
     };
     v.addEventListener("wheel", onWheel, { passive: false });
     return () => v.removeEventListener("wheel", onWheel);
-  }, [bothTaken]);
+  }, [editing]);
 
-  // 터치·마우스로 밀기: 사진 틀 바깥의 빈 테두리(또는 이동 모드에서는 어디든)를 끌면 사진이 손가락을 따라 움직인다.
+  // 터치·마우스로 밀기: 사진 틀 바깥의 빈 테두리를 끌면 사진이 손가락을 따라 움직인다.
   function onViewportDown(e: React.PointerEvent<HTMLDivElement>) {
     const t = e.target as HTMLElement;
-    const onStage = Boolean(stageRef.current?.contains(t));
-    if (t.closest("[data-text]") || !(t === e.currentTarget || (panMode && onStage))) return;
+    if (t.closest("[data-text]") || t !== e.currentTarget) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     panDrag.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
   }
@@ -718,15 +786,10 @@ export default function DualShot() {
     if (panDrag.current?.id === e.pointerId) panDrag.current = null;
   }
 
-  // 선택한 사진의 이동을 가운데로 되돌린다(배율은 그대로).
-  function recenter() {
-    setXform((all) => ({ ...all, [editSlot]: { ...all[editSlot], x: 0, y: 0 } }));
-  }
-
   // ── 네 모서리 조절점 ──
   // 선택한 사진(editSlot)의 변형된 모양 네 모서리에 동그라미를 얹는다. 작은 사진은 반대쪽 모서리를 고정한 채 가로·세로를 따로,
   // 큰 사진은 가운데를 기준으로 비율을 유지하며 확대·축소만 된다. 사진 틀의 화면 위치는 DOM에서 직접 재서 쓴다(프레임·구성마다 달라서).
-  const showHandles = Boolean(bothTaken) && tab !== "text";
+  const showHandles = editing && tab !== "text";
   // 겹치기 구성의 작은 사진은 프레임 자체의 크기·모양을, 그 밖에는 프레임 안의 사진을 바꾼다.
   const frameHandles = composition === "overlay" && editSlot === "small";
   type HandleBox = { left: number; top: number; width: number; height: number; vw: number; vh: number };
@@ -761,7 +824,7 @@ export default function DualShot() {
     const ro = new ResizeObserver(() => bumpLayout((n) => n + 1));
     ro.observe(stage);
     return () => ro.disconnect();
-  }, [bothTaken]);
+  }, [editing]);
 
   // 선택한 글자의 오른쪽 위 모서리 위치(편집 영역 기준). 선택이 풀리거나 글자를 직접 고치는 중에는 없다.
   const [deleteBtn, setDeleteBtn] = useState<{ x: number; y: number } | null>(null);
@@ -770,7 +833,7 @@ export default function DualShot() {
   useLayoutEffect(() => {
     const view = viewportRef.current;
     const el =
-      view && bothTaken && selectedText !== null && editingText !== selectedText
+      view && editing && selectedText !== null && editingText !== selectedText
         ? stageRef.current?.querySelector<HTMLElement>(`[data-text-id="${selectedText}"]`)
         : null;
     if (!view || !el) {
@@ -787,7 +850,7 @@ export default function DualShot() {
     e.stopPropagation(); // 사진 이동·확대 제스처로 넘어가지 않게 한다
     const stage = stageRef.current;
     const el = stage?.querySelector<HTMLElement>(frameHandles ? '[data-photo="small"]' : `[data-photo-box="${editSlot}"]`);
-    if (!stage || !el || panMode) return;
+    if (!stage || !el) return;
     const node = e.currentTarget;
     node.setPointerCapture(e.pointerId);
     const target = editSlot;
@@ -829,6 +892,7 @@ export default function DualShot() {
           </clipPath>
         </defs>
       </svg>
+      {screenFlash && <div className="fixed inset-0 z-50 bg-white" aria-hidden="true" />}
       {!bothTaken && (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3 text-sm">
@@ -845,6 +909,17 @@ export default function DualShot() {
               </button>
             )}
           </div>
+          {/* 방금 찍은 첫 사진을 바로 확인하고, 마음에 안 들면 그 사진만 다시 찍는다. */}
+          {slot === "small" && photos.big && (
+            <div className="flex items-center gap-3 text-sm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photos.big} alt="첫 번째 사진" className="h-16 w-12 flex-none bg-[#F2F2F2] object-cover" />
+              <span className="flex-1">첫 번째 사진 찍음</span>
+              <button onClick={() => retake("big")} className="h-11 border px-3">
+                첫 번째 다시 찍기
+              </button>
+            </div>
+          )}
           <div className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-black">
             {auto && auto.slot === slot && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/25 text-white">
@@ -852,12 +927,33 @@ export default function DualShot() {
                   {auto.left > 0 ? auto.left : "…"}
                 </span>
                 <span className="text-sm">
-                  {auto.left > 0 ? `${SHOT_LABEL[auto.slot]} 사진(후면)이 ${auto.left}초 뒤 자동으로 찍혀요` : "찍는 중"}
+                  {auto.left > 0 ? `${SHOT_LABEL[auto.slot]} 사진(${facing === "environment" ? "후면" : "전면"})이 ${auto.left}초 뒤 자동으로 찍혀요` : "찍는 중"}
                 </span>
                 <button onClick={() => setAuto(null)} className="h-11 border border-white px-4 text-sm">
                   자동 촬영 취소
                 </button>
               </div>
+            )}
+            {(facing === "user" || torchOk || isMobile) && (
+              <button
+                onClick={() => setFlashOn((v) => !v)}
+                disabled={facing === "environment" && !torchOk}
+                aria-pressed={flashOn}
+                aria-label={flashOn ? "플래시 끄기" : "플래시 켜기"}
+                title={facing === "environment" && !torchOk ? "이 기기는 후면 플래시를 지원하지 않아요" : flashOn ? "플래시 켜짐" : "플래시 꺼짐"}
+                className={`absolute right-2 top-2 z-20 flex h-11 w-11 items-center justify-center border ${
+                  facing === "environment" && !torchOk
+                    ? "border-[#767676] bg-black/40 text-[#767676]"
+                    : flashOn
+                      ? "border-black bg-white text-black"
+                      : "border-white bg-black/40 text-white"
+                }`}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill={flashOn ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round">
+                  <path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2Z" />
+                  {!flashOn && <path d="M3 3l18 18" strokeLinecap="round" />}
+                </svg>
+              </button>
             )}
             <video
               ref={videoRef}
@@ -868,6 +964,7 @@ export default function DualShot() {
               style={{ transform: `${facing === "user" ? "scaleX(-1) " : ""}scale(${digital})` }}
             />
           </div>
+          <CameraHelp inApp={inApp} problem={cameraErr} onRetry={() => setRetryCount((n) => n + 1)} />
           {error && <p className="text-sm text-red-500">{error}</p>}
           {/* 광각을 지원하는 카메라에서만 보인다. 지원하지 않으면 통째로 숨긴다. */}
           {wide && (
@@ -912,12 +1009,40 @@ export default function DualShot() {
         </div>
       )}
 
-      {bothTaken && (
+      {bothTaken && !confirmed && (
+        <div className="flex flex-col gap-4" aria-label="촬영 확인">
+          <p className="text-sm" style={{ color: "#555555" }}>
+            찍은 사진을 확인하세요. 마음에 안 들면 그 사진만 다시 찍을 수 있어요.
+          </p>
+          {/* 합쳐진 모양 미리보기: 첫 번째 사진이 큰 사진, 두 번째 사진이 작은 사진 */}
+          <div className="relative mx-auto aspect-[3/4] w-[min(100%,calc(46dvh*0.75))] overflow-hidden bg-[#F2F2F2]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photos.big!} alt="큰 사진" className="h-full w-full object-cover" />
+            <div className="absolute overflow-hidden rounded-xl bg-white shadow-lg" style={{ left: "6%", top: "6%", width: "32%", aspectRatio: "3 / 4" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={photos.small!} alt="작은 사진" className="h-full w-full object-cover" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <button onClick={() => retake("big")} className="h-11 border">
+              첫 번째 다시 찍기
+            </button>
+            <button onClick={() => retake("small")} className="h-11 border">
+              두 번째 다시 찍기
+            </button>
+          </div>
+          <button onClick={() => setConfirmed(true)} className="h-12 bg-black font-medium text-white">
+            꾸미기
+          </button>
+        </div>
+      )}
+
+      {editing && (
         <div className="flex flex-col gap-3">
           {/* 사진을 위에 고정해 두고, 아이콘 탭은 사진 위에 얹어 사진이 작아지지 않게 한다. */}
           <div className="sticky top-0 z-20 -mx-4 bg-background px-4 pb-2 pt-2 shadow-sm">
             <div className="relative mx-auto w-[min(100%,calc(46dvh*0.75))]">
-              {/* 편집 영역. 사진 틀(잘라내기 영역)은 고정이고, 틀 바깥의 빈 테두리를 밀거나(또는 이동 모드에서 어디든 밀거나)
+              {/* 편집 영역. 사진 틀(잘라내기 영역)은 고정이고, 틀 바깥의 빈 테두리를 밀거나
                   휠로 스크롤하면 사진이 틀 아래에서 움직인다. 사진·조절점·글자를 만지면 편집이다. */}
               <div
                 ref={viewportRef}
@@ -1116,7 +1241,7 @@ export default function DualShot() {
                         role="button"
                         aria-label={`${SLOT_LABEL[editSlot]} ${frameHandles ? "프레임" : ""} ${c.cy < 0 ? "위" : "아래"} ${c.cx < 0 ? "왼쪽" : "오른쪽"} 모서리 조절`}
                         className="absolute z-10 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center"
-                        style={{ left: p.x, top: p.y, touchAction: "none", pointerEvents: panMode ? "none" : "auto" }}
+                        style={{ left: p.x, top: p.y, touchAction: "none" }}
                       >
                         <span className="block h-[18px] w-[18px] rounded-full border-2 border-black bg-white shadow" />
                       </div>
@@ -1136,24 +1261,6 @@ export default function DualShot() {
                   </span>
                 </button>
               )}
-              </div>
-
-              <div className="absolute left-2 top-2 z-10 flex flex-col gap-1 rounded-xl bg-black/35 p-1 backdrop-blur-sm">
-                <button
-                  onClick={() => setPanMode((v) => !v)}
-                  aria-pressed={panMode}
-                  title="사진 이동: 켜면 사진 어디를 밀어도 편집 대신 틀 아래에서 사진이 움직여요(틀은 고정)"
-                  className={`h-9 min-w-9 rounded-lg px-1 text-[11px] ${panMode ? "bg-white text-pink-600 shadow-sm" : "text-white/90"}`}
-                >
-                  이동
-                </button>
-                <button
-                  onClick={recenter}
-                  title="선택한 사진의 위치를 가운데로"
-                  className="h-9 min-w-9 rounded-lg px-1 text-[11px] text-white/90"
-                >
-                  중앙
-                </button>
               </div>
 
               <div
@@ -1268,7 +1375,7 @@ export default function DualShot() {
                       onChange={(e) =>
                         setBorder((b) => ({ ...b, color: e.target.value }))
                       }
-                      className="h-6 w-10 cursor-pointer border-0 bg-transparent p-0"
+                      className="h-9 w-12 cursor-pointer border border-black bg-white p-0.5"
                     />
                   </label>
                 </>
@@ -1517,7 +1624,7 @@ export default function DualShot() {
                         onChange={(e) =>
                           updateText(selectedText!, { color: e.target.value })
                         }
-                        className="h-5 w-5 cursor-pointer border-0 bg-transparent p-0"
+                        className="h-6 w-8 cursor-pointer border border-black bg-white p-0.5"
                       />
                       직접 선택
                     </label>
@@ -1594,7 +1701,7 @@ export default function DualShot() {
                       onChange={(e) =>
                         updateText(selectedText!, { shadowColor: e.target.value })
                       }
-                      className="h-6 w-10 cursor-pointer border-0 bg-transparent p-0"
+                      className="h-9 w-12 cursor-pointer border border-black bg-white p-0.5"
                     />
                   </label>
                   <button
