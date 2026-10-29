@@ -20,6 +20,7 @@ import {
 } from "@/lib/social";
 import Avatar, { displayName } from "./Avatar";
 import PostViewer from "./PostViewer";
+import { useFriendCount } from "./useFriendCount";
 import RequireLogin from "./RequireLogin";
 
 type Loaded = {
@@ -38,6 +39,7 @@ function Inner({ username, myId }: { username: string; myId: string }) {
   const [postsError, setPostsError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const profileId = data?.profile?.id ?? null;
+  const friendCount = useFriendCount(profileId);
 
   // 이 사람의 게시물: DB 규칙이 볼 수 있는 것만 돌려준다(공개 계정의 공개 게시물, 내 프로필이면 내 것 전부).
   useEffect(() => {
@@ -177,6 +179,16 @@ function Inner({ username, myId }: { username: string; myId: string }) {
         <span>
           <b>{counts.following}</b> 팔로잉
         </span>
+        {friendCount !== null &&
+          (profileId === myId ? (
+            <Link href="/friends?tab=friends" className="underline underline-offset-4">
+              <b>{friendCount}</b> 친구
+            </Link>
+          ) : (
+            <span>
+              <b>{friendCount}</b> 친구
+            </span>
+          ))}
       </div>
 
       {isMe ? (
@@ -219,7 +231,7 @@ function Inner({ username, myId }: { username: string; myId: string }) {
       </section>
 
       {openId && posts && (
-        <PostViewer posts={posts} startId={openId} handle={`@${profile.username}`} onClose={() => setOpenId(null)} />
+        <PostViewer posts={posts} onDeleted={(id) => setPosts((cur) => cur && cur.filter((x) => x.id !== id))} startId={openId} handle={`@${profile.username}`} onClose={() => setOpenId(null)} />
       )}
     </div>
   );

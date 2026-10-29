@@ -160,6 +160,16 @@ drop trigger if exists friendships_guard on public.friendships;
 create trigger friendships_guard before update on public.friendships
   for each row execute function public.friendships_guard();
 
+-- 어떤 사람의 친구 수(요청을 수락한 친구만). 숫자만 알려 주고 누구인지는 알려 주지 않는다.
+create or replace function public.friend_count(uid uuid) returns integer
+language sql stable security definer set search_path = public as $$
+  select count(*)::integer from public.friendships
+  where status = 'accepted' and (requester = uid or addressee = uid);
+$$;
+revoke all on function public.friend_count(uuid) from public;
+grant execute on function public.friend_count(uuid) to authenticated;
+
+
 -- ───────────────────────── 팔로우 (한쪽이 구독하는 관계) ─────────────────────────
 create table if not exists public.follows (
   follower uuid not null references auth.users (id) on delete cascade,
@@ -264,7 +274,7 @@ create policy "delete own avatar"
 --  · 읽기: 본인 것 + "공개 계정(is_private = false)의 공개(public) 게시물"을 로그인한 누구나.
 --    친구공개 게시물을 친구에게, 비공개 계정의 공개 게시물을 누구에게 보일지, 로그인하지 않은 사람이 볼 수 있는지는
 --    우선순위가 정해진 뒤에 추가한다(그 전까지는 모두 막혀 있다).
---  · 삭제: 정책 없음(삭제 후 기록 보관 방식이 정해지지 않았다).
+--  · 삭제: 본인 게시물만 지울 수 있다. 행을 완전히 지우고(기록을 남기지 않는다), 댓글·좋아요도 함께 지워진다.
 --  · 수정: 순서(sort_order)만 가능. 그 밖의 항목은 수정 허용 범위가 정해질 때까지 막아 둔다.
 create table if not exists public.posts (
   id uuid primary key default gen_random_uuid(),
@@ -286,6 +296,10 @@ create policy "read own posts" on public.posts for select to authenticated
 drop policy if exists "create own posts" on public.posts;
 create policy "create own posts" on public.posts for insert to authenticated
   with check (author = auth.uid() and image_path like auth.uid()::text || '/%');
+
+drop policy if exists "delete own posts" on public.posts;
+create policy "delete own posts" on public.posts for delete to authenticated
+  using (author = auth.uid());
 
 drop policy if exists "reorder own posts" on public.posts;
 create policy "reorder own posts" on public.posts for update to authenticated
@@ -346,6 +360,12 @@ create policy "read own post images"
   on storage.objects for select to authenticated
   using (bucket_id = 'posts' and (storage.foldername(name))[1] = auth.uid()::text);
 
+-- 게시물을 지울 때 앱이 내 폴더의 이미지 파일도 함께 지운다.
+drop policy if exists "delete own post images" on storage.objects;
+create policy "delete own post images"
+  on storage.objects for delete to authenticated
+  using (bucket_id = 'posts' and (storage.foldername(name))[1] = auth.uid()::text);
+
 drop policy if exists "upload own post images" on storage.objects;
 create policy "upload own post images"
   on storage.objects for insert to authenticated
@@ -377,66 +397,58 @@ drop policy if exists "remove my like" on public.post_likes;
 create policy "remove my like" on public.post_likes for delete to authenticated
   using (user_id = auth.uid());
 
--- 댓글. 삭제해도 내용은 기록으로 남긴다(행을 지우지 않고 deleted_at만 채운다).
---  · 삭제 기록은 작성자 본인만 읽을 수 있고, 앱은 deleted_at이 빈 댓글만 보여 준다.
---  · 행을 완전히 지우는 정책은 없다. 기록 삭제는 개발자(서비스 키·대시보드)만 할 수 있다.
---  · 수정 전 내용은 따로 보관하지 않는다(수정 이력을 남길지는 아직 정해지지 않았다).
---  · 게시물·계정을 지울 때 댓글이 같이 지워지지 않도록 on delete 동작을 두지 않았다(지우려 하면 막힌다).
+-- 댓글. 게시물 전체에 다는 글이다.
+--  · "이 게시물을 읽을 수 있는 사람"만 읽고 쓸 수 있다(posts의 읽기 규칙을 그대로 따른다).
+--  · 본인 댓글만 수정·삭제할 수 있다. 삭제는 행을 완전히 지운다(기록을 남기지 않는다).
+--  · 게시물이나 계정이 지워지면 댓글도 함께 지워진다(on delete cascade).
+--  · 예전 버전(author/body/deleted_at 컬럼)의 테이블이 남아 있으면 지우고 새로 만든다. 그 테이블에 있던 댓글은 사라진다.
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'post_comments' and column_name = 'author') then
+    drop table public.post_comments cascade;
+  end if;
+end $$;
+
 create table if not exists public.post_comments (
   id uuid primary key default gen_random_uuid(),
-  post_id uuid not null references public.posts (id),
-  author uuid not null references public.profiles (id),
-  body text not null check (char_length(btrim(body)) between 1 and 500),
+  post_id uuid not null references public.posts (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  content text not null check (char_length(btrim(content)) between 1 and 300),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  deleted_at timestamptz
+  updated_at timestamptz not null default now()
 );
 create index if not exists post_comments_post_idx on public.post_comments (post_id, created_at);
+create index if not exists post_comments_created_idx on public.post_comments (created_at);
 
 alter table public.post_comments enable row level security;
 
 drop policy if exists "read comments of readable posts" on public.post_comments;
 create policy "read comments of readable posts" on public.post_comments for select to authenticated
-  using (
-    exists (select 1 from public.posts p where p.id = post_id)
-    and (deleted_at is null or author = auth.uid())
-  );
+  using (exists (select 1 from public.posts p where p.id = post_id));
 
 drop policy if exists "comment on a readable post" on public.post_comments;
 create policy "comment on a readable post" on public.post_comments for insert to authenticated
-  with check (
-    author = auth.uid() and deleted_at is null
-    and exists (select 1 from public.posts p where p.id = post_id)
-  );
+  with check (user_id = auth.uid() and exists (select 1 from public.posts p where p.id = post_id));
 
-drop policy if exists "edit or delete my comment" on public.post_comments;
-create policy "edit or delete my comment" on public.post_comments for update to authenticated
-  using (author = auth.uid() and deleted_at is null)
-  with check (author = auth.uid());
+drop policy if exists "edit my comment" on public.post_comments;
+create policy "edit my comment" on public.post_comments for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
 
--- 바꿀 수 있는 것은 본문(수정)과 deleted_at(삭제)뿐이다. 삭제는 되돌릴 수 없고, 삭제하면서 본문을 바꿀 수 없다.
--- updated_at과 deleted_at은 서버 시각으로 채운다.
+drop policy if exists "delete my comment" on public.post_comments;
+create policy "delete my comment" on public.post_comments for delete to authenticated
+  using (user_id = auth.uid());
+
+-- 바꿀 수 있는 것은 내용(content)뿐이다. updated_at은 서버 시각으로 채운다.
 create or replace function public.post_comments_guard() returns trigger
 language plpgsql as $$
 begin
-  if new.id <> old.id or new.post_id <> old.post_id or new.author <> old.author
+  if new.id <> old.id or new.post_id <> old.post_id or new.user_id <> old.user_id
      or new.created_at <> old.created_at then
-    raise exception 'only body can be edited' using errcode = '42501';
+    raise exception 'only content can be edited' using errcode = '42501';
   end if;
-  if old.deleted_at is not null then
-    raise exception 'a deleted comment cannot be changed' using errcode = '42501';
-  end if;
-  if new.deleted_at is not null then
-    if new.body <> old.body then
-      raise exception 'body cannot change while deleting' using errcode = '42501';
-    end if;
-    new.deleted_at := now();
-    new.updated_at := old.updated_at;
-  elsif new.body <> old.body then
-    new.updated_at := now();
-  else
-    new.updated_at := old.updated_at;
-  end if;
+  new.updated_at := case when new.content <> old.content then now() else old.updated_at end;
   return new;
 end $$;
 drop trigger if exists post_comments_guard on public.post_comments;
@@ -463,3 +475,37 @@ create policy "read images of readable posts"
     bucket_id = 'posts'
     and exists (select 1 from public.posts p where p.image_path = objects.name)
   );
+
+-- ───────────────────────── 친구공개 게시물: 수락한 친구가 열람 ─────────────────────────
+-- 기획서 6장: 친구공개 게시물은 서로 수락한 친구만 볼 수 있다. (요청 중인 상태는 친구가 아니다.)
+-- 이미 있는 규칙(본인 것, 공개 계정의 공개 게시물)에 더해진다. 비공개(private) 게시물은 여전히 본인만 본다.
+-- 비공개 계정의 "공개" 게시물을 친구에게 보일지는 아직 정해지지 않아 열지 않았다(친구공개로 올린 것만 보인다).
+-- 좋아요·댓글·이미지 파일 규칙은 "게시물을 읽을 수 있는가"를 따라가므로 이 규칙으로 함께 넓어진다.
+drop policy if exists "read friends-only posts of accepted friends" on public.posts;
+create policy "read friends-only posts of accepted friends" on public.posts for select to authenticated
+  using (
+    visibility = 'friends'
+    and exists (
+      select 1 from public.friendships f
+      where f.status = 'accepted'
+        and ((f.requester = auth.uid() and f.addressee = author) or (f.addressee = auth.uid() and f.requester = author))
+    )
+  );
+
+-- ───────────────────────── 실시간 알림 ─────────────────────────
+-- 홈의 친구 요청·새 댓글 알림 점이 새로고침 없이 바뀌도록, 요청 테이블의 변경을 Realtime으로 내보낸다.
+-- (받는 쪽은 RLS 규칙에 따라 자기 행의 변경만 받는다.)
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'friendships') then
+      alter publication supabase_realtime add table public.friendships;
+    end if;
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'follows') then
+      alter publication supabase_realtime add table public.follows;
+    end if;
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'post_comments') then
+      alter publication supabase_realtime add table public.post_comments;
+    end if;
+  end if;
+end $$;

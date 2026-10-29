@@ -478,6 +478,24 @@ export function downloadUrl(url: string, filename: string) {
   a.remove();
 }
 
+// 파일을 기기에 저장한다. 휴대폰은 <a download>를 막거나 무시하는 브라우저가 많아서,
+// 파일 공유를 지원하면 공유 시트("이미지 저장" 등)를 먼저 쓰고, 안 되면 다운로드로 넘어간다.
+export async function saveFile(blob: Blob, filename: string): Promise<void> {
+  const file = new File([blob], filename, { type: blob.type });
+  if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return; // 사용자가 공유 창을 닫음
+      // 그 밖의 실패는 아래 다운로드로 대신한다.
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  downloadUrl(url, filename);
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
 export function timestampName(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");

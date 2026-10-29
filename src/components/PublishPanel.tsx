@@ -41,7 +41,7 @@ export default function PublishPanel({ makeImage }: { makeImage: () => Promise<B
   if (done) {
     return (
       <p className="text-sm">
-        올렸어요. <Link href="/feed" className="underline">내 피드에서 보기</Link>
+        올렸어요. <Link href="/me" className="underline">내 사진 보기</Link>
       </p>
     );
   }
