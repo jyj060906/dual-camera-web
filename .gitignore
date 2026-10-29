@@ -24,3 +24,7 @@ __pycache__/
 next-env.d.ts
 npm-debug.log*
 .vercel
+
+.env*
+node_modules
+.next
