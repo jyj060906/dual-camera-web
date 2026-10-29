@@ -41,7 +41,7 @@ export default function PublishPanel({ makeImage }: { makeImage: () => Promise<B
   if (done) {
     return (
       <p className="text-sm">
-        올렸어요. <Link href="/feed" className="underline">내 피드에서 보기</Link>
+        올렸어요. <Link href="/me" className="underline">내 사진 보기</Link>
       </p>
     );
   }
@@ -64,7 +64,7 @@ export default function PublishPanel({ makeImage }: { makeImage: () => Promise<B
             role="radio"
             aria-checked={visibility === v}
             onClick={() => setVisibility(v)}
-            className={`rounded-full border px-3 py-1 ${
+            className={`rounded-none border px-3 py-1 ${
               visibility === v ? "border-pink-500 bg-pink-50 text-pink-600" : ""
             }`}
           >
@@ -75,7 +75,7 @@ export default function PublishPanel({ makeImage }: { makeImage: () => Promise<B
       <button
         onClick={publish}
         disabled={busy || !visibility}
-        className="rounded-full border border-pink-500 py-2 font-medium text-pink-600 disabled:opacity-50"
+        className="rounded-none border border-pink-500 py-2 font-medium text-pink-600 disabled:opacity-50"
       >
         {busy ? "올리는 중..." : visibility ? "올리기" : "공개 범위를 골라 주세요"}
       </button>

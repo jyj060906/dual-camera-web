@@ -1,7 +1,6 @@
-import FeedView from "@/components/FeedView";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "내 피드 · 듀얼 카메라" };
-
+// 예전 주소. 내 게시물 모아보기는 '나' 탭(/me)으로 옮겼다.
 export default function FeedPage() {
-  return <FeedView />;
+  redirect("/me");
 }

@@ -121,7 +121,7 @@ function Form({ profile }: { profile: Profile }) {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="rounded-full border px-3 py-1"
+            className="rounded-none border px-3 py-1"
           >
             사진 바꾸기
           </button>
@@ -191,7 +191,7 @@ function Form({ profile }: { profile: Profile }) {
       <button
         type="submit"
         disabled={busy}
-        className="rounded-full bg-pink-500 py-3 font-medium text-white disabled:opacity-50"
+        className="rounded-none bg-pink-500 py-3 font-medium text-white disabled:opacity-50"
       >
         {busy ? "저장하는 중..." : "저장"}
       </button>

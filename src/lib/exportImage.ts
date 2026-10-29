@@ -1,17 +1,19 @@
 // 화면의 미리보기(CSS)와 같은 결과를 canvas로 다시 그려 이미지 파일로 만든다.
 import { canvasFilterSupported, applyFilterToImageData } from "./cssFilter";
+import { BOARD_H, BOARD_W, boardLayout, type BoardText } from "./composition";
 import {
   FONT_FALLBACK_VAR,
   FONTS,
-  FRAMES,
   filterOf,
   hexToRgba,
   type Border,
   type Adjust,
+  type Composition,
   type FilterId,
   type Frame,
   type Slot,
   type TextItem,
+  type Xform,
 } from "./editor";
 import type { TextureId } from "@/components/textures";
 
@@ -23,9 +25,13 @@ export type ExportInput = {
   adjust: Record<Slot, Adjust>;
   filters: Record<Slot, FilterId>;
   textures: Record<Slot, TextureId[]>;
+  xform: Record<Slot, Xform>;
+  composition: Composition;
+  caption: string;
   frame: Frame;
   border: Border;
   smallSize: number; // 큰 사진 너비 대비 %
+  smallAspect: number; // 작은 사진 프레임의 너비/높이
   smallPos: { x: number; y: number }; // %
   texts: TextItem[];
   stageWidthPx: number; // 화면에 보이는 사진 틀 너비(px). px 단위 값을 비율로 옮기는 데 쓴다.
@@ -89,6 +95,30 @@ function drawPhoto(
   applyFilterToImageData(data, scaledFilter);
   tctx.putImageData(data, 0, 0);
   ctx.drawImage(tmp, box.x, box.y, box.w, box.h);
+}
+
+// 사진을 틀 안에서 이동·가로세로 배율을 적용해 그린다. 화면(PhotoImg)과 같은 규칙이다:
+// 원본을 틀을 덮는 크기(cover)로 틀 가운데에 놓고, 이동 → 배율 순서로 적용한다. 틀 밖으로 나간 부분은 잘린다.
+function drawPhotoX(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  box: Box,
+  xf: Xform,
+  filter: string,
+  k: number,
+) {
+  const ar = img.naturalWidth / img.naturalHeight;
+  const cw = Math.max(box.w, box.h * ar);
+  const ch = Math.max(box.h, box.w / ar);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(box.x, box.y, box.w, box.h);
+  ctx.clip();
+  ctx.translate(box.x + box.w / 2 + (xf.x / 100) * box.w, box.y + box.h / 2 + (xf.y / 100) * box.h);
+  ctx.scale(xf.sx, xf.sy);
+  // cover 상자는 원본과 비율이 같아서 원본 전체가 그려진다(drawPhoto의 cover 잘라내기가 일어나지 않는다).
+  drawPhoto(ctx, img, { x: -cw / 2, y: -ch / 2, w: cw, h: ch }, filter, k);
+  ctx.restore();
 }
 
 // 질감은 textures.tsx의 TextureLayers와 같은 순서·세기로 그린다.
@@ -264,6 +294,53 @@ function fontFamily(item: TextItem): string {
   return [...families, "sans-serif"].join(", ");
 }
 
+// 구성 안의 글자 한 개를 그린다. 줄바꿈 규칙은 화면(CompositionBoard)과 같다:
+// 공백에서만 줄을 바꾸고, 한 낱말이 칸보다 길면 글자 단위로 자른다.
+function boardLines(ctx: CanvasRenderingContext2D, t: BoardText): string[] {
+  const width = t.box.w;
+  if (t.lines === 1) {
+    let line = t.text.replace(/\n/g, " ");
+    if (ctx.measureText(line).width <= width) return [line];
+    while (line.length > 0 && ctx.measureText(line + "…").width > width) line = line.slice(0, -1);
+    return [line + "…"];
+  }
+  const out: string[] = [];
+  for (const para of t.text.split("\n")) {
+    let cur = "";
+    for (const word of para.split(/(?<= )/)) {
+      if (ctx.measureText((cur + word).trimEnd()).width <= width) {
+        cur += word;
+        continue;
+      }
+      if (cur) out.push(cur.trimEnd());
+      cur = "";
+      for (const ch of word) {
+        if (cur && ctx.measureText(cur + ch).width > width) {
+          out.push(cur);
+          cur = "";
+        }
+        cur += ch;
+      }
+    }
+    out.push(cur.trimEnd());
+  }
+  return out.slice(0, t.lines);
+}
+
+function drawBoardText(ctx: CanvasRenderingContext2D, t: BoardText, family: string) {
+  if (!t.text) return;
+  ctx.save();
+  ctx.font = `${t.weight} ${t.size}px ${family}`;
+  ctx.fillStyle = "#000000";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = t.align;
+  const x = t.align === "right" ? t.box.x + t.box.w : t.box.x;
+  boardLines(ctx, t).forEach((line, i) => {
+    ctx.fillText(line, x, t.box.y + (i + 0.5) * t.size * t.lineHeight);
+  });
+  ctx.restore();
+}
+
 export async function renderDualShot(input: ExportInput): Promise<HTMLCanvasElement> {
   const W = EXPORT_WIDTH;
   const H = EXPORT_HEIGHT;
@@ -288,44 +365,71 @@ export async function renderDualShot(input: ExportInput): Promise<HTMLCanvasElem
   canvas.height = H;
   const ctx = canvas.getContext("2d")!;
 
-  // 큰 사진
-  const full: Box = { x: 0, y: 0, w: W, h: H };
-  drawPhoto(ctx, bigImg, full, filterOf(input.adjust.big, input.filters.big), k);
-  drawTextures(ctx, input.textures.big, full, k);
-
-  // 작은 사진
-  const aspect = FRAMES.find((f) => f.id === input.frame)!.aspect;
-  const bw = (input.smallSize / 100) * W;
-  const box: Box = {
-    x: (input.smallPos.x / 100) * W,
-    y: (input.smallPos.y / 100) * H,
-    w: bw,
-    h: bw / aspect,
-  };
-
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.15)";
-  ctx.shadowBlur = 8 * k;
-  ctx.shadowOffsetY = 4 * k;
-  // 바깥 모양을 테두리 색(기본은 흰색)으로 채우고, 그 안쪽에 사진을 넣는다.
-  const borderPx = input.border.on ? (input.border.thickness / 100) * W : null;
-  ctx.fillStyle = input.border.on ? input.border.color : "white";
-  traceShape(ctx, input.frame, box, k, 0);
-  ctx.fill();
-  ctx.restore();
-
-  const inner = innerBox(input.frame, box, k, borderPx);
-  ctx.save();
-  if (input.frame === "polaroid") {
-    ctx.beginPath();
-    ctx.rect(inner.x, inner.y, inner.w, inner.h);
+  if (input.composition !== "overlay") {
+    // 그리드·번호·큰 글씨·©: 흰 바탕에 두 사진을 빈칸 없이 놓는다.
+    const layout = boardLayout(input.composition, input.caption);
+    const family = getComputedStyle(document.body).fontFamily;
+    await Promise.all(
+      layout.texts
+        .filter((t) => t.text)
+        .map((t) => document.fonts.load(`${t.weight} ${t.size}px ${family}`, t.text).catch(() => undefined)),
+    );
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, W, H);
+    // 보드는 BOARD_W×BOARD_H 기준이므로 저장 크기가 다르면 비율만큼 키운다.
+    ctx.save();
+    ctx.scale(W / BOARD_W, H / BOARD_H);
+    (["big", "small"] as Slot[]).forEach((s) => {
+      const box = layout.photos[s];
+      ctx.fillStyle = "#F2F2F2";
+      ctx.fillRect(box.x, box.y, box.w, box.h);
+      drawPhotoX(ctx, s === "big" ? bigImg : smallImg, box, input.xform[s], filterOf(input.adjust[s], input.filters[s]), k);
+      drawTextures(ctx, input.textures[s], box, k);
+    });
+    layout.texts.forEach((t) => drawBoardText(ctx, t, family));
+    ctx.restore();
   } else {
-    traceShape(ctx, input.frame, box, k, frameInset(borderPx));
+    // 큰 사진
+    const full: Box = { x: 0, y: 0, w: W, h: H };
+    ctx.fillStyle = "white"; // 사진을 줄이거나 돌려서 비는 곳
+    ctx.fillRect(0, 0, W, H);
+    drawPhotoX(ctx, bigImg, full, input.xform.big, filterOf(input.adjust.big, input.filters.big), k);
+    drawTextures(ctx, input.textures.big, full, k);
+
+    // 작은 사진
+    const aspect = input.smallAspect;
+    const bw = (input.smallSize / 100) * W;
+    const box: Box = {
+      x: (input.smallPos.x / 100) * W,
+      y: (input.smallPos.y / 100) * H,
+      w: bw,
+      h: bw / aspect,
+    };
+
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.15)";
+    ctx.shadowBlur = 8 * k;
+    ctx.shadowOffsetY = 4 * k;
+    // 바깥 모양을 테두리 색(기본은 흰색)으로 채우고, 그 안쪽에 사진을 넣는다.
+    const borderPx = input.border.on ? (input.border.thickness / 100) * W : null;
+    ctx.fillStyle = input.border.on ? input.border.color : "white";
+    traceShape(ctx, input.frame, box, k, 0);
+    ctx.fill();
+    ctx.restore();
+
+    const inner = innerBox(input.frame, box, k, borderPx);
+    ctx.save();
+    if (input.frame === "polaroid") {
+      ctx.beginPath();
+      ctx.rect(inner.x, inner.y, inner.w, inner.h);
+    } else {
+      traceShape(ctx, input.frame, box, k, frameInset(borderPx));
+    }
+    ctx.clip();
+    drawPhotoX(ctx, smallImg, inner, input.xform.small, filterOf(input.adjust.small, input.filters.small), k);
+    drawTextures(ctx, input.textures.small, inner, k);
+    ctx.restore();
   }
-  ctx.clip();
-  drawPhoto(ctx, smallImg, inner, filterOf(input.adjust.small, input.filters.small), k);
-  drawTextures(ctx, input.textures.small, inner, k);
-  ctx.restore();
 
   // 텍스트
   for (const t of input.texts) {
@@ -372,6 +476,24 @@ export function downloadUrl(url: string, filename: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+// 파일을 기기에 저장한다. 휴대폰은 <a download>를 막거나 무시하는 브라우저가 많아서,
+// 파일 공유를 지원하면 공유 시트("이미지 저장" 등)를 먼저 쓰고, 안 되면 다운로드로 넘어간다.
+export async function saveFile(blob: Blob, filename: string): Promise<void> {
+  const file = new File([blob], filename, { type: blob.type });
+  if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return; // 사용자가 공유 창을 닫음
+      // 그 밖의 실패는 아래 다운로드로 대신한다.
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  downloadUrl(url, filename);
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 export function timestampName(): string {

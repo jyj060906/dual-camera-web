@@ -13,8 +13,13 @@ import {
   idToEmail,
 } from "@/lib/supabase";
 import { SetupNotice } from "./RequireLogin";
+import Tabs from "./Tabs";
 
 type Mode = "login" | "signup";
+const LOGIN_TABS = [
+  { id: "login", label: "로그인" },
+  { id: "signup", label: "가입하기" },
+] as const;
 
 export default function LoginForm() {
   const router = useRouter();
@@ -36,7 +41,7 @@ export default function LoginForm() {
     return (
       <div className="flex flex-col gap-3 text-sm">
         <p>이미 로그인되어 있어요.</p>
-        <Link href="/" className="rounded-full bg-pink-500 py-2 text-center font-medium text-white">
+        <Link href="/" className="rounded-none bg-pink-500 py-2 text-center font-medium text-white">
           사진 만들러 가기
         </Link>
       </div>
@@ -100,24 +105,14 @@ export default function LoginForm() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div role="tablist" className="grid grid-cols-2 gap-1 rounded-xl bg-zinc-100 p-1 text-sm dark:bg-zinc-800">
-        {(["login", "signup"] as Mode[]).map((m) => (
-          <button
-            key={m}
-            role="tab"
-            aria-selected={mode === m}
-            onClick={() => {
-              setMode(m);
-              setError(null);
-            }}
-            className={`rounded-lg py-2 ${
-              mode === m ? "bg-white font-medium text-pink-600 shadow-sm dark:bg-zinc-700" : "text-zinc-500"
-            }`}
-          >
-            {m === "login" ? "로그인" : "가입하기"}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={LOGIN_TABS}
+        value={mode}
+        onChange={(m) => {
+          setMode(m);
+          setError(null);
+        }}
+      />
 
       <form onSubmit={submit} className="flex flex-col gap-3 text-sm">
         <label className="flex flex-col gap-1">
@@ -164,10 +159,25 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={busy}
-          className="rounded-full bg-pink-500 py-3 font-medium text-white disabled:opacity-50"
+          className="rounded-none bg-pink-500 py-3 font-medium text-white disabled:opacity-50"
         >
           {busy ? "잠시만요..." : mode === "login" ? "로그인" : "가입하기"}
         </button>
+        {mode === "login" && (
+          <p className="text-center text-sm">
+            아직 계정이 없나요?{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setMode("signup");
+                setError(null);
+              }}
+              className="font-medium underline"
+            >
+              가입하기
+            </button>
+          </p>
+        )}
         {mode === "signup" && (
           <p className="text-xs text-zinc-500">
             메일 주소 없이 아이디와 비밀번호로만 가입해서, 비밀번호를 잊으면 찾을 수 없어요.
@@ -182,7 +192,7 @@ export default function LoginForm() {
       </div>
 
       <div className="flex flex-col gap-2 text-sm">
-        <button onClick={() => oauth("google")} className="rounded-full border py-3">
+        <button onClick={() => oauth("google")} className="rounded-none border py-3">
           Google로 계속하기
         </button>
         <p className="text-xs text-zinc-500">

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>꾸미기</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;500;700&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+
+    <header class="topbar" style="padding: 12px 20px 8px">
+      <a href="index.html" class="page-title" style="text-decoration: none">꾸미기</a>
+      <button class="btn-black">올리기</button>
+    </header>
+
+    <section class="preview" aria-label="미리보기">
+      <!-- 프레임 4종: 선택한 것만 보여요 -->
+      <div class="frame f-grid" data-frame="grid">
+        <div class="tone"></div><div></div><div style="background: #BDBAB4"></div>
+        <div style="background: #E6E2DC"></div><div class="tone"></div><div></div>
+        <div></div><div style="background: #CFCBC4"></div><div style="background: #D9D2C7"></div>
+        <span class="cap caption-out"></span>
+      </div>
+
+      <div class="frame f-num" data-frame="num" hidden>
+        <div><span>(1)</span><div class="cell tone"></div></div>
+        <div><span>(2)</span><div class="cell" style="background: #BDBAB4"></div></div>
+        <div><span>(3)</span><div class="cell" style="background: #E6E2DC"></div></div>
+        <div><span>(4)</span><div class="cell" style="background: #D9D2C7"></div></div>
+        <span class="cap">*<span class="caption-out"></span></span>
+      </div>
+
+      <div class="frame f-type" data-frame="type" hidden>
+        <span class="cap caption-out"></span>
+        <div class="ph tone">[셀카]</div>
+      </div>
+
+      <div class="frame f-stamp" data-frame="stamp" hidden>
+        <div class="ph tone">[사진]</div>
+        <div class="bottom">
+          <span class="copy">© 2026</span>
+          <span class="cap caption-out"></span>
+        </div>
+      </div>
+    </section>
+
+    <div class="controls">
+      <div class="control">
+        <span class="label">프레임</span>
+        <div class="segmented" id="frames">
+          <button class="on" data-frame="grid" aria-pressed="true">그리드</button>
+          <button data-frame="num" aria-pressed="false">번호</button>
+          <button data-frame="type" aria-pressed="false">큰 글씨</button>
+          <button data-frame="stamp" aria-pressed="false">©</button>
+        </div>
+      </div>
+
+      <div class="control">
+        <label for="cap" class="label">캡션</label>
+        <input id="cap" class="line-input" value="young camera club" style="font-size: 17px">
+      </div>
+
+      <div class="control">
+        <span class="label">톤</span>
+        <div class="swatches" id="swatches">
+          <button class="swatch on" data-color="#D6D4D0" aria-label="웜 그레이" aria-pressed="true" style="background: #D6D4D0"></button>
+          <button class="swatch" data-color="#E6D5C8" aria-label="스킨" aria-pressed="false" style="background: #E6D5C8"></button>
+          <button class="swatch" data-color="#A9A6A0" aria-label="콘크리트" aria-pressed="false" style="background: #A9A6A0"></button>
+          <button class="swatch" data-color="#F1F0ED" aria-label="화이트" aria-pressed="false" style="background: #F1F0ED"></button>
+          <button class="swatch" data-color="#1A1A1A" aria-label="블랙" aria-pressed="false" style="background: #1A1A1A"></button>
+        </div>
+      </div>
+
+      <div class="control">
+        <span class="label">텍스트 스탬프</span>
+        <div class="stamps" id="stamps">
+          <button>© 2026</button>
+          <button>(01)</button>
+          <button>front / back</button>
+          <button>★</button>
+          <button>날짜</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/decorate.js"></script>
+</body>
+</html>
