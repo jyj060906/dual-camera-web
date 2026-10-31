@@ -11,11 +11,23 @@ const TIMEOUT_MS = 8000;
 export default function AuthCallback() {
   const router = useRouter();
   const { status, profile } = useAuth();
-  const [urlError] = useState<string | null>(() => {
+  // 클라이언트가 code를 읽어 주소에서 지우기 전(첫 렌더)의 주소 상태를 기록한다. 값은 담지 않고 있고 없음만 남긴다.
+  const [snapshot] = useState<{ error: string | null; diag: string } | null>(() => {
     if (typeof window === "undefined") return null;
-    const p = new URLSearchParams(window.location.search);
-    return p.get("error_description") ?? p.get("error");
+    const q = new URLSearchParams(window.location.search);
+    const h = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const has = (v: boolean) => (v ? "있음" : "없음");
+    return {
+      error: q.get("error_description") ?? q.get("error") ?? h.get("error_description") ?? h.get("error"),
+      diag: [
+        `주소 code ${has(q.has("code"))}`,
+        `해시 access_token ${has(h.has("access_token"))}`,
+        `검증 쿠키 ${has(document.cookie.includes("code-verifier"))}`,
+        `주소 ${window.location.origin}`,
+      ].join(" · "),
+    };
   });
+  const urlError = snapshot?.error ?? null;
   const [timedOut, setTimedOut] = useState(false);
 
   useEffect(() => {
@@ -44,6 +56,7 @@ export default function AuthCallback() {
     return (
       <div className="flex flex-col gap-3 text-sm">
         <p className="text-red-500">로그인하지 못했어요: {error}</p>
+        {snapshot && <p className="break-all text-xs text-zinc-500">{snapshot.diag}</p>}
         <Link href="/login" className="rounded-none border py-2 text-center">
           다시 시도하기
         </Link>
