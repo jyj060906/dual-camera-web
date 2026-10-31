@@ -8,6 +8,12 @@ import { getSupabase } from "@/lib/supabase";
 
 const TIMEOUT_MS = 8000;
 
+// NEXT_PUBLIC_* 값은 빌드 때 코드에 박힌다. 배포본이 어떤 값으로 빌드됐는지 보려고 앞뒤 일부와 길이만 보여 준다.
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const maskKey = (k: string | undefined) =>
+  k ? `${k.slice(0, 15)}…${k.slice(-5)} (${k.length}자${k !== k.trim() ? ", 앞뒤 공백 있음" : ""})` : "없음";
+
 // 구글에서 돌아오는 곳. Supabase 클라이언트가 주소의 code를 읽어 로그인을 마무리한다.
 export default function AuthCallback() {
   const router = useRouter();
@@ -25,6 +31,8 @@ export default function AuthCallback() {
         `해시 access_token ${has(h.has("access_token"))}`,
         `검증 쿠키 ${has(document.cookie.includes("code-verifier"))}`,
         `주소 ${window.location.origin}`,
+        `빌드에 들어간 Supabase 주소 ${SUPABASE_URL ?? "없음"}`,
+        `빌드에 들어간 키 ${maskKey(SUPABASE_KEY)}`,
       ].join(" · "),
     };
   });
