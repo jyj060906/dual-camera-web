@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { getSupabase } from "@/lib/supabase";
 
 const TIMEOUT_MS = 8000;
 
 // 구글에서 돌아오는 곳. Supabase 클라이언트가 주소의 code를 읽어 로그인을 마무리한다.
 export default function AuthCallback() {
   const router = useRouter();
-  const { status, profile } = useAuth();
+  const { status, profile, configured } = useAuth();
   // 클라이언트가 code를 읽어 주소에서 지우기 전(첫 렌더)의 주소 상태를 기록한다. 값은 담지 않고 있고 없음만 남긴다.
   const [snapshot] = useState<{ error: string | null; diag: string } | null>(() => {
     if (typeof window === "undefined") return null;
@@ -36,6 +37,22 @@ export default function AuthCallback() {
     router.replace(profile.username ? "/" : "/profile");
   }, [status, profile, router]);
 
+  // 로그인 정보가 없을 때, 클라이언트가 주소의 code를 교환하다 낸 오류가 있으면 화면에 보여 준다.
+  // initialize()는 이미 끝난 초기화의 결과를 그대로 돌려줘서 다시 요청하지 않는다.
+  const [exchangeError, setExchangeError] = useState<string | null>(null);
+  useEffect(() => {
+    if (status !== "out" || !configured) return;
+    let alive = true;
+    getSupabase()
+      .auth.initialize()
+      .then(({ error: e }) => {
+        if (alive && e) setExchangeError(`${e.name}${e.status ? ` ${e.status}` : ""}: ${e.message}`);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [status, configured]);
+
   useEffect(() => {
     const t = setTimeout(() => setTimedOut(true), TIMEOUT_MS);
     return () => clearTimeout(t);
@@ -57,6 +74,7 @@ export default function AuthCallback() {
       <div className="flex flex-col gap-3 text-sm">
         <p className="text-red-500">로그인하지 못했어요: {error}</p>
         {snapshot && <p className="break-all text-xs text-zinc-500">{snapshot.diag}</p>}
+        {exchangeError && <p className="break-all text-xs text-zinc-500">교환 오류 {exchangeError}</p>}
         <Link href="/login" className="rounded-none border py-2 text-center">
           다시 시도하기
         </Link>
