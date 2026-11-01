@@ -1,36 +1,140 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 듀얼 카메라 (dual-camera-web)
 
-## Getting Started
+전·후면 사진을 한 번에 촬영하고, 꾸민 뒤 친구들과 공유하며 소통하는 웹사이트 
 
-First, run the development server:
+- 배포 주소: https://dual-camera-web-4a2t.vercel.app
+- 기준 문서: [dual-camera-web-plan.md](dual-camera-web-plan.md) (요구사항), [CLAUDE.md](CLAUDE.md) (작업 규칙)
+
+## 1. 목적과 사용자
+
+- **목적:** 촬영 횟수 제한 없이 일상을 기록하고, 사진을 편집하고 꾸미며 친구들과 공유, 소통합니다.
+- **사용자:** 평소 친구와 사진을 자주 공유하는 사람, 듀얼 카메라를 자주 사용하는 사람, 사진 꾸미기를 좋아하는 사람, 친구와 사진으로 소통하고 싶은 사람.
+- **대상 환경:** 모바일(아이폰·안드로이드) 중심의 웹, PC는 후면 카메라 사용이 불가하여 전면 카메라로 두 장을 찍어 사용합니다.
+
+
+## 2. 실행 방법
+
+1. **링크 접속:** https://dual-camera-web-4a2t.vercel.app
+2. **로그인 및 가입:** 가입 및 로그인합니다. (-> 친구와 서로 공유하기 위해 로그인 과정이 꼭 필요합니다...)
+3. 카메라 버튼을 누르고 각도 및 광각을 조절하여 앞·뒤 사진 촬영합니다.
+4. 텍스트·보정 등으로 꾸민 뒤 게시합니다.
+5. 친구와 서로 사진을 공유하여 댓글 및 공감을 누르고 소통합니다. 
+
+
+**직접 실행하기** (Node.js v24에서 확인)
 
 ```bash
+npm install
+cp .env.example .env.local   # Supabase URL과 anon 키 입력
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 3. 작업 과정
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **주제 정하기**: 가장 내가 흥미 있고 만들고 싶은 아이디어를 떠올립니다.
+2. **아이디어 구체화 및 문서 정리**: 떠오르는 아이디어를 메모에 적고 AI(Claude, ChatGPT)를 이용하여 아이디어를 발전시키고 정리하여 문서 `dual-camera-web-plan.md`를 만들었습니다. (-> https://chatgpt.com/share/6ae710d0-e38c-83ee-96fb-69c90fc859f8)
+3. **규칙 정하기**: 코드를 쓰기 전에 요구사항 문서와 `CLAUDE.md`를 만들었습니다. "확정된 것만 구현", "요청하지 않은 기능 추가 금지" 같은 규칙을 적어 두고 Claude Code가 이 규칙을 따르게 했습니다.
+4. **기능 만들기**: vs code의 claude code에게 `dual-camera-web-plan.md`를 참고하여 기능을 하나씩 만들도록 요청하였습니다.
+5. **필요없는 기능 수정 및 제거**: 너무 많은 기능들로 인해 사용성이 떨어져서 필요없는 기능이나 차별성이 부족한 부분의 기능들을 제거하고, "촬영, 간단한 꾸미기, 친구 피드, 달력으로 모아보기" 4가지를 중심으로 기획을 다시 정리했습니다.
+6. **디자인**: 기능들이 어느 정도 만들어진 뒤, 다양한 레퍼런스를 찾아보며 원하는 분위기를 정해 "딱딱하면서도 트렌디한 흑백 미니멀"이라는 키워드로 Claude Code에게 피드 디자인을 요청했고, 결과를 보며 추가로 수정했습니다.
+7. **접속 확인**:  VS Code에서 개발 서버를 켜 두지 않으면 웹이 열리지 않아서, 이런 과정 없이도 언제든 휴대폰으로 접속할 수 있도록 Vercel에 배포했습니다.
 
-## Learn More
 
-To learn more about Next.js, take a look at the following resources:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 4. Claude Code 사용 증거
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+VS Code의 Claude Code로 개발했고, 커밋 49개 중 43개에 Claude Code 공동 작성자 표기가 있습니다.
 
-## Deploy on Vercel
+**규칙 문서로 작업 범위 정하기**
+`CLAUDE.md`에 "확정된 조건만 구현", "요청하지 않은 기능 추가 금지", "실제 기기에서 확인하기 전에는 동작한다고 말하지 않기"를 적어 두었습니다.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**강제 푸시 전 멈춤**
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> 강제 푸시는 되돌리기 어려워서 하지 않았습니다. 원격 쪽에만 있는 작업이 없는지 확인한 뒤에 정하시면 됩니다.
+
+커밋 기록이 원격과 갈라졌을 때 Claude Code가 남긴 메시지입니다. 저는 백업 브랜치를 만들고 내용 차이가 없는 것을 확인한 뒤 진행했습니다.
+
+
+**키 노출 위험 경고**
+
+> .env.local에는 NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY가 있습니다. 이 이름은 NEXT_PUBLIC_ 접두사가 붙어서 브라우저에 노출될 수 있습니다.
+
+이 경고를 보고 키가 GitHub에 올라간 적이 없는지 확인한 뒤, 쓰지 않는 키를 지웠습니다.
+
+**로그인 수정 PR #1**
+
+![PR #1](docs/images/02-pr1-merged-github.png)
+
+배포 후 로그인이 멈추자 Claude Code가 PR로 수정안을 올렸고, 저는 내용을 확인한 뒤 머지했습니다. PR에 "실제 기기 동작은 확인 전"이라고 적혀 있어서 아이폰에서 직접 확인했습니다.
+
+
+
+## 5. 검증 결과
+
+- **실제 기기**: 제가 직접 아이폰 Safari로 배포 사이트에 접속해 직접 써 봤습니다. 
+- **로컬 자동 확인**: Claude Code가 컴퓨터에서 진짜 카메라 대신 가짜 화면을 넣어 버튼과 화면 흐름을 확인했습니다(Playwright).
+
+가짜 화면으로는 실제 카메라가 되는지 알 수 없어서, 카메라 관련 결과는 실제 기기 기준으로 판단했습니다.
+
+### 정상 케이스
+
+| 시나리오 | 실제 기기(iPhone Safari, iphone 17) | 로컬 가짜 카메라 |
+| --- | --- | --- |
+| 구글 로그인 | 통과 | 해당 없음(Supabase 접속 불가) |
+| 앞·뒤 카메라 촬영 | 통과 | 통과(두 장 촬영 → 확인 화면, 앞·뒤 구분 없음) |
+| 텍스트 추가 | 통과 | 미확인(스크립트가 버튼을 찾지 못함) |
+| 꾸미기 탭 진입, 편집본 저장 | 미확인 | 통과(JPG 다운로드 발생, 파일 내용은 보지 않음) |
+| 피드 게시와 표시 | 통과 | 해당 없음(Supabase 접속 불가) |
+
+### 엣지 케이스
+
+| 시나리오 | 실제 기기 | 로컬 가짜 카메라 |
+| --- | --- | --- |
+| 카메라 권한 거부 | 안내 표시 통과 | 통과(`NotAllowedError`를 주입해 안내·오류 줄·"다시 시도" 확인) |
+| 환경변수 없는 빌드의 로그인 | 해당 없음(배포본에는 환경변수가 있음) | 통과("로그인 기능이 아직 설정되지 않았어요") |
+| 로그인 콜백 실패 | 배포 사이트에서 오류 문구와 "다시 시도하기"가 표시됨을 사용자가 확인(수정 전 키 오류 상황) | 통과(`code` 없이 진입해도 무한 로딩 없음) |
+
+- 검증 기기: iphone 17
+
+### 화면 증거 (아이폰 Safari 캡처)
+
+| 피드 게시와 표시 | 로그인 콜백 실패 화면 |
+| --- | --- |
+| <img src="docs/images/01-feed-iphone-safari.jpg" alt="나 탭의 그리드: 게시물 7개" width="240"> | <img src="docs/images/03-login-failure-screen.png" alt="로그인하지 못했어요 오류 메시지와 다시 시도하기 버튼" width="240"> |
+| 새 배포 주소(`…a2t.vercel.app`)의 "나" 탭 그리드, 게시물 7개. 사진 속 얼굴은 가려진 상태로 캡처했습니다. | PR #1 적용 후의 실패 화면(주소창 `…era-web.vercel.app`). 무한 로딩 대신 오류와 "다시 시도하기"가 보입니다. |
+
+## 6. 효과적이었던 방법 3개
+
+1. **기획 문서와 `CLAUDE.md`로 규칙 정하기**: 기획 문서 `dual-camera-web-plan.md`와 작업 규칙 `CLAUDE.md`를 먼저 만들고, Claude Code가 이 규칙을 따르게 했습니다. 문서에 정해지지 않은 부분은 임의로 정하지 말고 저에게 선택지를 보여 달라고 했고, 요청하지 않은 기능은 추가하지 않게 했습니다. 덕분에 기능이 멋대로 늘어나지 않고, 중요한 결정은 제가 직접 내릴 수 있었습니다.
+2. **원인부터 설명하게 하기**: 문제가 생기면 바로 고치게 하지 않고 "고치기 전에 원인부터 설명해 줘"라고 요청했습니다. 로그인 문제 때는 Claude Code가 Supabase 라이브러리 코드를 직접 읽고, 로그인 정보를 확인하는 단계가 오류 없이 조용히 건너뛰어진다는 원인을 설명해 줬습니다. 설명을 이해한 뒤 수정을 진행해서, 무엇이 왜 바뀌었는지 알 수 있었습니다.
+3. **오류 화면으로 에이전트와 정보 주고받기**: Claude Code는 배포 사이트에 접속할 수 없어서 문제를 직접 볼 수 없었습니다. 그래서 오류 화면에 원인을 짐작할 수 있는 정보를 띄워 달라고 했고, 제가 아이폰에서 그 화면을 보고 결과를 알려 주는 방식으로 원인을 좁혔습니다. 
+
+## 7. 어려웠던 점 3개
+
+1. **매번 새 주소 발급**: 처음에는 Vercel 같은 배포 서비스가 있다는 것을 몰랐습니다. 그래서 휴대폰으로 확인할 때마다 VS Code에서 개발 서버를 켜고, 매번 바뀌는 임시 주소를 새로 받아 카카오톡으로 보내 접속해야 했습니다. 나중에 Vercel을 알게 되어 GitHub 저장소와 연결해 배포했고, 이제는 고정된 주소 하나로 언제든 접속할 수 있습니다.
+2. **커밋 기록이 꼬임**: 작업할 때마다 Claude Code에게 "커밋해 줘"라고만 해서 기록이 정리되지 않았습니다. 커밋 메시지를 정리하다가 제 컴퓨터와 GitHub의 기록이 16개씩 갈라졌습니다. 백업 브랜치를 만들고 두 기록의 내용이 같은 것을 확인한 뒤 강제 푸시로 맞췄습니다.
+3. **구글 로그인(Google OAuth) 연동**: 구글 계정으로 로그인하려면 구글이 운영하는 로그인 시스템(Google OAuth)과 Supabase를 연결해야 했습니다. 배포 후 휴대폰에서 "로그인을 마무리하는 중..." 화면에서 멈췄고, 원인을 찾는 동안 같은 `401 Invalid API key` 오류가 여러 번 반복됐습니다. Claude Code가 실패 화면에 오류 정보를 띄우게 하고, 제가 아이폰에서 확인한 결과를 알려 주며 원인을 좁혔습니다. Supabase에 배포 주소를 등록하고 새 Vercel 프로젝트에 환경변수를 다시 넣어 해결했지만, 정확히 어떤 값이 틀렸는지는 확정하지 못했습니다. 이미 머지된 PR에 커밋을 추가하는 실수로 PR이 4개까지 늘기도 했습니다.
+
+## 8. 알려진 한계
+
+- 실제로 사용 가능한 기기 검증은 아이폰 Safari와 PC 기준입니다. 안드로이드에서 작동하는지 확인하지 못했습니다. 
+- PC에서는 후면 카메라가 지원되지 않기 때문에 전면으로 2장을 찍어야 합니다. 
+- 과한 욕심으로 인해 많은 기능들을 추가하다 보니 조금 번잡해 보입니다.
+- 아이디/비밀번호 가입은 메일이 없어 비밀번호를 잊으면 찾을 수 없습니다. 또한, 로그인 방법마다 계정이 따로입니다.
+- 배포 주소가 바뀌면 Supabase Site URL·Redirect URLs를 다시 등록해야 합니다.
+- 게시물을 삭제하면 영구적으로 삭제되어 다시 볼 수 없습니다. 
+- 광각 카메라 사용은 휴대폰 기능마다 사용 여부가 달라질 수 있습니다.
+- 카메라 접근 권한을 허용하지 않으면 카메라 사용이 어렵습니다.
+- 아직 알림기능을 활성화 하지 않아서 알림이 따로 오지 않습니다.
+
+
+## 9. 핵심 파일 5개
+
+| 파일 | 역할 |
+| --- | --- |
+| `src/components/DualShot.tsx` | 촬영 → 확인 → 꾸미기 → 저장·게시 화면 전체(약 1,750줄) |
+| `src/lib/camera.ts` | 카메라 열기, 권한·오류 판별, 광각 전환 |
+| `src/lib/exportImage.ts` | 두 사진을 한 장으로 합성해 이미지로 내보내기 |
+| `supabase/schema.sql` | 테이블, 접근 규칙(RLS), 트리거(가입 시 프로필 생성 등) |
+| `src/lib/auth.tsx` | 로그인 상태·프로필 관리. 구글 복귀 처리는 `src/components/AuthCallback.tsx` |
