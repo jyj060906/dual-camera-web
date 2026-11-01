@@ -49,6 +49,10 @@ npm run dev                  # http://localhost:3000
 | #4 | 빌드에 들어간 Supabase 주소·키(일부) 표시 |
 
 - 이후 진단 줄은 모두 제거했습니다(커밋 `20e9d86`). 오류 메시지, 시간 초과, 다시 시도 버튼은 남겼습니다.
+
+<img src="docs/images/02-pr1-merged-github.png" alt="GitHub 모바일에서 본 PR #1(Merged): 원인, 변경, 참고" width="260">
+
+*PR #1을 아이폰의 GitHub 화면에서 본 모습(Merged). 원인·변경·참고를 적은 PR 본문이 보입니다.*
 - [TODO] Claude Code로 만든 이전 기능들의 대화 기록·스크린샷 첨부 위치
 
 ## 5. 검증 결과
@@ -74,6 +78,13 @@ npm run dev                  # http://localhost:3000
 | 로그인 콜백 실패 | 배포 사이트에서 오류 문구와 "다시 시도하기"가 표시됨을 사용자가 확인(수정 전 키 오류 상황) | 통과(`code` 없이 진입해도 무한 로딩 없음) |
 
 - 검증 기기: [TODO] 아이폰 기종·iOS 버전
+
+### 화면 증거 (아이폰 Safari 캡처)
+
+| 피드 게시와 표시 | 로그인 콜백 실패 화면 |
+| --- | --- |
+| <img src="docs/images/01-feed-iphone-safari.jpg" alt="나 탭의 그리드: 게시물 7개" width="240"> | <img src="docs/images/03-login-failure-screen.png" alt="로그인하지 못했어요 오류 메시지와 다시 시도하기 버튼" width="240"> |
+| 새 배포 주소(`…a2t.vercel.app`)의 "나" 탭 그리드, 게시물 7개. 사진 속 얼굴은 가려진 상태로 캡처했습니다. | PR #1 적용 후의 실패 화면(주소창 `…era-web.vercel.app`). 무한 로딩 대신 오류와 "다시 시도하기"가 보입니다. |
 
 ## 6. 효과적이었던 방법 3개
 
